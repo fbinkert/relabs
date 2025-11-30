@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, path::Path as StdPath, path::PathBuf as StdPathBuf};
+use std::{marker::PhantomData, path::Path as StdPath};
 
 use crate::{
     errors::PathFlavorError,

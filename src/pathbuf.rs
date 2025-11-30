@@ -17,13 +17,6 @@ impl<F> PathBuf<F>
 where
     F: PathFlavor,
 {
-    pub fn new() -> Self {
-        Self {
-            _flavor: PhantomData,
-            inner: StdPathBuf::new(),
-        }
-    }
-
     pub fn try_new(path: StdPathBuf) -> Result<Self, PathFlavorError> {
         if F::accepts(&path) {
             // Safety: invariants was checked
@@ -47,10 +40,6 @@ where
         self.inner
     }
 
-    pub fn as_inner_mut(&mut self) -> &mut StdPathBuf {
-        &mut self.inner
-    }
-
     pub fn as_path(&self) -> &Path<F> {
         // Safety: caller guarantees F::accepts(&self.inner)
         unsafe { Path::new_unchecked(&self.inner) }
@@ -60,7 +49,11 @@ where
     pub fn push(&mut self, rhs: &RelPath) {
         self.inner.push(rhs.as_inner());
     }
+}
 
+// Public per-flavor wrappers for flavor-specific documentation.
+
+impl PathBuf<Absolute> {
     /// Replaces the path with the given path.
     #[inline]
     pub fn set<P: AsRef<AbsPath>>(&mut self, new: P) {
@@ -68,7 +61,7 @@ where
     }
 }
 
-impl<F: PathFlavor> Default for PathBuf<F> {
+impl Default for PathBuf<Raw> {
     fn default() -> Self {
         Self {
             _flavor: PhantomData,
