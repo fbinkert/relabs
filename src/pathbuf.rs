@@ -17,6 +17,7 @@ impl<F> PathBuf<F>
 where
     F: PathFlavor,
 {
+    #[inline]
     pub fn try_new(path: StdPathBuf) -> Result<Self, PathFlavorError> {
         if F::accepts(&path) {
             // Safety: invariants was checked
@@ -28,7 +29,7 @@ where
 
     /// # Safety
     ///
-    /// Caller must ensure `invariant` holds; otherwise this causes UB when reinterpreting.
+    /// Caller must ensure `invariant` holds.
     pub(crate) unsafe fn new_unchecked(path: StdPathBuf) -> Self {
         debug_assert!(F::accepts(&path));
         Self {
@@ -37,12 +38,15 @@ where
         }
     }
 
+    #[must_use]
+    #[inline]
     pub fn into_inner(self) -> StdPathBuf {
         self.inner
     }
 
+    #[inline]
     pub fn as_path(&self) -> &Path<F> {
-        // Safety: caller guarantees F::accepts(&self.inner)
+        // Safety: relies on the type invariant that F::accepts(inner) holds; upheld by constructors
         unsafe { Path::new_unchecked(&self.inner) }
     }
 
@@ -50,17 +54,15 @@ where
     pub fn push(&mut self, rhs: &RelPath) {
         self.inner.push(rhs.as_inner());
     }
-}
 
-// Public per-flavor wrappers for flavor-specific documentation.
-
-impl PathBuf<Absolute> {
     /// Replaces the path with the given path.
     #[inline]
-    pub fn set<P: AsRef<AbsPath>>(&mut self, new: P) {
+    pub fn set<P: AsRef<Path>>(&mut self, new: P) {
         self.inner = new.as_ref().as_inner().to_path_buf();
     }
 }
+
+// Public per-flavor wrappers for flavor-specific documentation.
 
 impl Default for PathBuf<Raw> {
     fn default() -> Self {
