@@ -5,6 +5,7 @@ use crate::{
 };
 
 // Generic join core restricted to flavor-compatible LHS and RHS.
+#[must_use]
 #[inline]
 pub(crate) fn join_impl<L, R>(lhs: &Path<L>, rhs: &Path<R>) -> PathBuf<<L as CanJoin<R>>::Output>
 where
@@ -13,5 +14,6 @@ where
 {
     let joined = lhs.as_inner().join(rhs.as_inner());
     // Safety: allowed pairs guarantee the resulting flavor matches CanJoin::Output
+    debug_assert!(L::accepts(&joined));
     unsafe { PathBuf::new_unchecked(joined) }
 }

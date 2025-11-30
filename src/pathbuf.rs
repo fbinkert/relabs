@@ -30,6 +30,7 @@ where
     ///
     /// Caller must ensure `invariant` holds; otherwise this causes UB when reinterpreting.
     pub(crate) unsafe fn new_unchecked(path: StdPathBuf) -> Self {
+        debug_assert!(F::accepts(&path));
         Self {
             _flavor: PhantomData,
             inner: path,

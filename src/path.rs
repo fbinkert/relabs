@@ -44,6 +44,7 @@ where
     ///
     /// Caller must ensure `p.is_absolute()` holds; otherwise this causes UB when reinterpreting.
     pub(crate) unsafe fn new_unchecked(path: &StdPath) -> &Self {
+        debug_assert!(F::accepts(path));
         unsafe { &*(path as *const StdPath as *const Self) }
     }
 
