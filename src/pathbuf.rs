@@ -3,13 +3,13 @@ use std::{marker::PhantomData, path::PathBuf as StdPathBuf};
 use crate::{
     errors::PathFlavorError,
     flavors::{Absolute, PathFlavor, Raw},
-    path::{AbsPath, Path, RelPath},
+    path::{Path, RelPath},
 };
 
 /// Newtype wrapper around `std::path::PathBuf`.
 #[repr(transparent)]
 pub struct PathBuf<F = Raw> {
-    _flavor: PhantomData<F>,
+    _flavor: PhantomData<*const F>,
     inner: StdPathBuf,
 }
 

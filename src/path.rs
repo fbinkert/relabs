@@ -10,7 +10,7 @@ use crate::{
 /// Newtype wrapper around `std::path::Path`.
 #[repr(transparent)]
 pub struct Path<F = Raw> {
-    _flavor: PhantomData<F>,
+    _flavor: PhantomData<*const F>,
     inner: StdPath,
 }
 
