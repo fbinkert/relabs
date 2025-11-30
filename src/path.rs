@@ -2,7 +2,9 @@ use std::{marker::PhantomData, path::Path as StdPath, path::PathBuf as StdPathBu
 
 use crate::{
     errors::PathFlavorError,
-    flavor::{Absolute, PathFlavor, Raw},
+    flavors::{Absolute, PathFlavor, Raw, Relative},
+    internal,
+    pathbuf::AbsPathBuf,
 };
 
 /// Newtype wrapper around `std::path::Path`.
@@ -12,15 +14,15 @@ pub struct Path<F = Raw> {
     inner: StdPath,
 }
 
-/// Newtype wrapper around `std::path::PathBuf`.
-#[repr(transparent)]
-pub struct PathBuf<F = Raw> {
-    _flavor: PhantomData<F>,
-    inner: StdPathBuf,
-}
-
+/// Borrowed, typed, absolute path ('Path<Absolute>').
+///
+/// Invariant: 'Path::is_absolute()' must be true.
 pub type AbsPath = Path<Absolute>;
-pub type AbsPathBuf = PathBuf<Absolute>;
+
+/// Borrowed, typed, relative path ('Path<Relative>').
+///
+/// Invariant: 'Path::is_relative()' must be true.
+pub type RelPath = Path<Relative>;
 
 impl<F> Path<F>
 where
@@ -44,49 +46,19 @@ where
     pub(crate) unsafe fn new_unchecked(path: &StdPath) -> &Self {
         unsafe { &*(path as *const StdPath as *const Self) }
     }
+
+    pub fn as_inner(&self) -> &StdPath {
+        &self.inner
+    }
 }
 
-impl<F> PathBuf<F>
-where
-    F: PathFlavor,
-{
-    pub fn new() -> Self {
-        Self {
-            _flavor: PhantomData,
-            inner: StdPathBuf::new(),
-        }
-    }
+// Public per-flavor wrappers for flavor-specific documentation.
 
-    pub fn try_new(path: StdPathBuf) -> Result<Self, PathFlavorError> {
-        if F::accepts(&path) {
-            // Safety: invariants was checked
-            Ok(unsafe { Self::new_unchecked(path) })
-        } else {
-            Err(PathFlavorError::WrongFlavor(path))
-        }
-    }
-
-    /// # Safety
+impl Path<Absolute> {
+    /// Joins a relative path onto this absolute path.
     ///
-    /// Caller must ensure `invariant` holds; otherwise this causes UB when reinterpreting.
-    pub(crate) unsafe fn new_unchecked(path: StdPathBuf) -> Self {
-        Self {
-            _flavor: PhantomData,
-            inner: path,
-        }
-    }
-
-    pub fn as_path(&self) -> &Path<F> {
-        // Safety: caller guarantees F::accepts(&self.inner)
-        unsafe { Path::new_unchecked(&self.inner) }
-    }
-}
-
-impl<F: PathFlavor> Default for PathBuf<F> {
-    fn default() -> Self {
-        Self {
-            _flavor: PhantomData,
-            inner: StdPathBuf::default(),
-        }
+    /// The result remains absolute.
+    pub fn join(&self, rhs: &RelPath) -> AbsPathBuf {
+        internal::join_impl(self, rhs)
     }
 }
