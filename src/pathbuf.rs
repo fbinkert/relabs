@@ -20,17 +20,17 @@ where
     #[inline]
     pub fn try_new(path: StdPathBuf) -> Result<Self, PathFlavorError> {
         if F::accepts(&path) {
-            // Safety: invariants was checked
-            Ok(unsafe { Self::new_unchecked(path) })
+            Ok(Self {
+                _flavor: PhantomData,
+                inner: path,
+            })
         } else {
             Err(PathFlavorError::WrongFlavor(path))
         }
     }
 
-    /// # Safety
-    ///
     /// Caller must ensure `invariant` holds.
-    pub(crate) unsafe fn new_unchecked(path: StdPathBuf) -> Self {
+    pub(crate) fn new_trusted(path: StdPathBuf) -> Self {
         debug_assert!(F::accepts(&path));
         Self {
             _flavor: PhantomData,

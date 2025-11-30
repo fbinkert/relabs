@@ -15,5 +15,5 @@ where
     let joined = lhs.as_inner().join(rhs.as_inner());
     // Safety: allowed pairs guarantee the resulting flavor matches CanJoin::Output
     debug_assert!(L::accepts(&joined));
-    unsafe { PathBuf::new_unchecked(joined) }
+    PathBuf::new_trusted(joined)
 }
