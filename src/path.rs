@@ -24,14 +24,14 @@ pub type AbsPath = Path<Absolute>;
 /// Invariant: 'Path::is_relative()' must be true.
 pub type RelPath = Path<Relative>;
 
-impl<F> Path<F>
+impl<Flavor> Path<Flavor>
 where
-    F: PathFlavor,
+    Flavor: PathFlavor,
 {
     #[inline]
     pub fn new<P: AsRef<StdPath> + ?Sized>(path: &P) -> Option<&Self> {
         let path = path.as_ref();
-        F::accepts(path).then(|| unsafe { Self::new_unchecked(path) })
+        Flavor::accepts(path).then(|| unsafe { Self::new_unchecked(path) })
     }
 
     #[inline]
@@ -42,9 +42,9 @@ where
 
     /// # Safety
     ///
-    /// Caller must ensure `p.is_absolute()` holds; otherwise this causes UB when reinterpreting.
+    /// Caller must ensure invariant` Flavor::accepts(path)` holds.
     pub(crate) unsafe fn new_unchecked(path: &StdPath) -> &Self {
-        debug_assert!(F::accepts(path));
+        debug_assert!(Flavor::accepts(path));
         unsafe { &*(path as *const StdPath as *const Self) }
     }
 
