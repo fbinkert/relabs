@@ -2,7 +2,7 @@ use std::{marker::PhantomData, path::PathBuf as StdPathBuf};
 
 use crate::{
     errors::PathFlavorError,
-    flavors::{Absolute, PathFlavor, Raw},
+    flavors::{Absolute, PathFlavor, Raw, Relative},
     internal,
     path::{Path, RelPath},
 };
@@ -78,3 +78,8 @@ impl Default for PathBuf<Raw> {
 ///
 /// Invariant: 'Path::is_absolute()' must be true.
 pub type AbsPathBuf = PathBuf<Absolute>;
+
+/// Owned, typed, absolute path ('PathBuf<Relative>').
+///
+/// Invariant: 'Path::is_is_relative()' must be true.
+pub type RelPathBuf = PathBuf<Relative>;
