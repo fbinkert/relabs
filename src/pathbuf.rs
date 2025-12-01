@@ -8,8 +8,8 @@ use crate::{
 
 /// Newtype wrapper around `std::path::PathBuf`.
 #[repr(transparent)]
-pub struct PathBuf<F = Raw> {
-    _flavor: PhantomData<*const F>,
+pub struct PathBuf<Flavor = Raw> {
+    _flavor: PhantomData<Flavor>,
     inner: StdPathBuf,
 }
 
