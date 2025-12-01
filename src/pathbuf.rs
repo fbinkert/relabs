@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, path::PathBuf as StdPathBuf};
+use std::{ffi::OsStr, marker::PhantomData, path::Path as StdPath, path::PathBuf as StdPathBuf};
 
 use crate::{
     errors::PathFlavorError,
@@ -63,6 +63,20 @@ where
     }
 }
 
+impl<Flavor> AsRef<OsStr> for PathBuf<Flavor> {
+    #[inline]
+    fn as_ref(&self) -> &OsStr {
+        self.inner.as_os_str()
+    }
+}
+
+impl<Flavor> AsRef<StdPath> for PathBuf<Flavor> {
+    #[inline]
+    fn as_ref(&self) -> &StdPath {
+        &self.inner
+    }
+}
+
 // Public per-flavor wrappers for flavor-specific documentation.
 
 impl Default for PathBuf<Raw> {
@@ -79,7 +93,7 @@ impl Default for PathBuf<Raw> {
 /// Invariant: 'Path::is_absolute()' must be true.
 pub type AbsPathBuf = PathBuf<Absolute>;
 
-/// Owned, typed, absolute path ('PathBuf<Relative>').
+/// Owned, typed, relative path ('PathBuf<Relative>').
 ///
 /// Invariant: 'Path::is_is_relative()' must be true.
 pub type RelPathBuf = PathBuf<Relative>;

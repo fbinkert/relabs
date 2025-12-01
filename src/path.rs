@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, path::Path as StdPath};
+use std::{ffi::OsStr, marker::PhantomData, path::Path as StdPath};
 
 use crate::{
     errors::PathFlavorError,
@@ -40,7 +40,22 @@ where
         Self::new(path).ok_or_else(|| PathFlavorError::WrongFlavor(path.to_path_buf()))
     }
 
+    #[inline]
     pub fn as_inner(&self) -> &StdPath {
+        &self.inner
+    }
+}
+
+impl<Flavor> AsRef<OsStr> for Path<Flavor> {
+    #[inline]
+    fn as_ref(&self) -> &OsStr {
+        self.inner.as_os_str()
+    }
+}
+
+impl<Flavor> AsRef<StdPath> for Path<Flavor> {
+    #[inline]
+    fn as_ref(&self) -> &StdPath {
         &self.inner
     }
 }
