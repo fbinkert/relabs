@@ -1,16 +1,30 @@
-# relabs-path
+# RelAbs-path
 
 > ⚠️ **Status: Active Development** This crate is currently in the early stages of development. APIs are subject to change.
 
-Zero-cost, zero-dependency, type-safe wrappers around Rust's `std::path::Path` and `std::path::PathBuf`.
-
-`relabs-path` leverages Rust's type system to enforce path invariants at compile time. It provides Newtype wrappers around `std::path::Path` and `std::path::PathBuf` to track whether a path is absolute, relative without any runtime overhead and while remaining fully compatible with the standard library.
+Type-safe Relative/Absolute wrappers around Rust's `std::path::Path` and `std::path::PathBuf`. Zero-cost, zero-dependency and fully compatible with the standard library.
 
 ## Why
 
 Standard Rust paths are "stringly typed": a `PathBuf` could be absolute, relative, or nonsense. This forces you to write runtime checks (`if path.is_absolute() { ... }`) or implicit assumptions that often lead to bugs when joining paths.
 
 Typed Paths moves these checks to the boundary. Once you have an `AbsPathBuf`, you know that it is absolute.
+
+```rust
+// Before (Std)
+fn load_config(base: &Path, rel: &Path) {
+    // Runtime check required, or silent bugs if 'rel' is actually absolute
+    if rel.is_absolute() { panic!("Expected relative path!"); }
+    let p = base.join(rel); 
+}
+
+// After (Relabs)
+fn load_config(base: &AbsPath, rel: &RelPath) {
+    // Compiler guarantees 'base' is absolute and 'rel' is relative.
+    // No runtime checks needed.
+    let p = base.join(rel); 
+}
+```
 
 ## Key Features
 
