@@ -24,9 +24,9 @@ where
 ///
 /// # Safety
 ///
-/// 1. Caller must ensure that the Path is acrually valid for the target Flavor.
-/// 2. `Path<Flavor>` is #[repr(transparent)] around `std::path::Path` guraranteeing the same memory layout.
-/// 3. The lifetime of the returned reference is the same as the lifetime of input reference.
+/// 1. Caller must ensure that the std::path::Path is actually valid for the target Flavor.
+/// 2. `Path<F>` is #[repr(transparent)] around `std::path::Path` guarnteeing the same memory layout.
+/// 3. The lifetime of the returned reference is the same as the lifetime of the input reference.
 pub(crate) fn convert_ref<F: PathFlavor>(path: &StdPath) -> &Path<F> {
     debug_assert!(F::accepts(path));
     unsafe { &*(path as *const StdPath as *const Path<F>) }
