@@ -31,21 +31,13 @@ where
     #[inline]
     pub fn new<P: AsRef<StdPath> + ?Sized>(path: &P) -> Option<&Self> {
         let path = path.as_ref();
-        Flavor::accepts(path).then(|| unsafe { Self::new_unchecked(path) })
+        Flavor::accepts(path).then(|| internal::convert_ref(path))
     }
 
     #[inline]
     pub fn try_new<P: AsRef<StdPath> + ?Sized>(path: &P) -> Result<&Self, PathFlavorError> {
         let path = path.as_ref();
         Self::new(path).ok_or_else(|| PathFlavorError::WrongFlavor(path.to_path_buf()))
-    }
-
-    /// # Safety
-    ///
-    /// Caller must ensure invariant` Flavor::accepts(path)` holds.
-    pub(crate) unsafe fn new_unchecked(path: &StdPath) -> &Self {
-        debug_assert!(Flavor::accepts(path));
-        unsafe { &*(path as *const StdPath as *const Self) }
     }
 
     pub fn as_inner(&self) -> &StdPath {

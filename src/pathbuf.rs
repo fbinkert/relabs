@@ -3,6 +3,7 @@ use std::{marker::PhantomData, path::PathBuf as StdPathBuf};
 use crate::{
     errors::PathFlavorError,
     flavors::{Absolute, PathFlavor, Raw},
+    internal,
     path::{Path, RelPath},
 };
 
@@ -13,13 +14,13 @@ pub struct PathBuf<Flavor = Raw> {
     inner: StdPathBuf,
 }
 
-impl<F> PathBuf<F>
+impl<Flavor> PathBuf<Flavor>
 where
-    F: PathFlavor,
+    Flavor: PathFlavor,
 {
     #[inline]
     pub fn try_new(path: StdPathBuf) -> Result<Self, PathFlavorError> {
-        if F::accepts(&path) {
+        if Flavor::accepts(&path) {
             Ok(Self {
                 _flavor: PhantomData,
                 inner: path,
@@ -31,7 +32,7 @@ where
 
     /// Caller must ensure `invariant` holds.
     pub(crate) fn new_trusted(path: StdPathBuf) -> Self {
-        debug_assert!(F::accepts(&path));
+        debug_assert!(Flavor::accepts(&path));
         Self {
             _flavor: PhantomData,
             inner: path,
@@ -45,9 +46,9 @@ where
     }
 
     #[inline]
-    pub fn as_path(&self) -> &Path<F> {
-        // Safety: relies on the type invariant that F::accepts(inner) holds; upheld by constructors
-        unsafe { Path::new_unchecked(&self.inner) }
+    pub fn as_path(&self) -> &Path<Flavor> {
+        // Safety: relies on the type invariant that Flavors::accepts(inner) holds, upheld by constructors
+        internal::convert_ref(&self.inner)
     }
 
     #[inline]
