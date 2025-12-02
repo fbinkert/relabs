@@ -22,7 +22,7 @@ fn load_config(base: &Path, rel: &Path) {
     // Runtime Risk: If 'rel' is absolute, .join() replaces 'base' entirely.
     // Boilerplate: You must manually check .is_absolute() or hope for the best.
     if rel.is_absolute() { panic!("Expected relative path!"); }
-    let p = base.join(rel);j
+    let p = base.join(rel);
 }
 ```
 
