@@ -28,10 +28,15 @@ impl<Flavor> Path<Flavor>
 where
     Flavor: PathFlavor,
 {
+    /// Caller must ensure `invariant` holds.
+    pub(crate) fn new_trusted<P: AsRef<StdPath> + ?Sized>(path: &P) -> &Self {
+        internal::convert_ref(path.as_ref())
+    }
+
     #[inline]
     pub fn new<P: AsRef<StdPath> + ?Sized>(path: &P) -> Option<&Self> {
         let path = path.as_ref();
-        Flavor::accepts(path).then(|| internal::convert_ref(path))
+        Flavor::accepts(path).then(|| Self::new_trusted(path))
     }
 
     #[inline]
@@ -60,7 +65,7 @@ impl<Flavor> AsRef<StdPath> for Path<Flavor> {
     }
 }
 
-// Public per-flavor wrappers for flavor-specific documentation.
+// Public per-flavor wrappers.
 
 impl Path<Absolute> {
     /// Joins a relative path onto this absolute path.
