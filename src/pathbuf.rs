@@ -2,14 +2,14 @@ use std::{ffi::OsStr, marker::PhantomData, path::Path as StdPath, path::PathBuf 
 
 use crate::{
     errors::PathFlavorError,
-    flavors::{Absolute, PathFlavor, Raw, Relative},
+    flavors::{Absolute, Any, PathFlavor, Relative},
     internal,
     path::{Path, RelPath},
 };
 
 /// Newtype wrapper around `std::path::PathBuf`.
 #[repr(transparent)]
-pub struct PathBuf<Flavor = Raw> {
+pub struct PathBuf<Flavor = Any> {
     _flavor: PhantomData<Flavor>,
     inner: StdPathBuf,
 }
@@ -79,7 +79,7 @@ impl<Flavor> AsRef<StdPath> for PathBuf<Flavor> {
 
 // Public per-flavor wrappers for flavor-specific documentation.
 
-impl Default for PathBuf<Raw> {
+impl Default for PathBuf<Any> {
     fn default() -> Self {
         Self {
             _flavor: PhantomData,

@@ -14,11 +14,11 @@ pub struct Absolute;
 /// Invariant: 'Path::is_relative()' must be true.
 pub struct Relative;
 /// No invariants.
-pub struct Raw;
+pub struct Any;
 
 impl private::Sealed for Absolute {}
 impl private::Sealed for Relative {}
-impl private::Sealed for Raw {}
+impl private::Sealed for Any {}
 
 impl PathFlavor for Absolute {
     fn accepts<P: AsRef<Path> + ?Sized>(path: &P) -> bool {
@@ -32,7 +32,7 @@ impl PathFlavor for Relative {
     }
 }
 
-impl PathFlavor for Raw {
+impl PathFlavor for Any {
     fn accepts<P: AsRef<Path> + ?Sized>(_: &P) -> bool {
         true
     }
