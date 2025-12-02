@@ -1,6 +1,9 @@
 [package]
-name = "relabs-path"
+name = "relabs"
 version = "0.1.0"
 edition = "2024"
+description = "Type-safe relative/absolute path wrappers."
+license = "MIT"
+repository = "https://github.com/fbinkert/relabs"
 
 [dependencies]
