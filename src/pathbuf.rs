@@ -1,4 +1,9 @@
-use std::{ffi::OsStr, marker::PhantomData, path::Path as StdPath, path::PathBuf as StdPathBuf};
+use std::{
+    ffi::OsStr,
+    fmt,
+    marker::PhantomData,
+    path::{Path as StdPath, PathBuf as StdPathBuf},
+};
 
 use crate::{
     flavors::{Absolute, Any, PathFlavor, Relative},
@@ -42,10 +47,10 @@ where
     /// # Examples
     ///
     /// ```
-    /// use relabse-path::{Path, PathBuf, AbsPathBuf};
+    /// use relabs::{AbsPath, PathBuf, AbsPathBuf};
     ///
     /// let p = AbsPathBuf::try_from("/test").unwrap();
-    /// assert_eq!(AbsPath::new("/test"), p.as_path());
+    /// assert_eq!(AbsPath::new("/test").unwrap(), p.as_path());
     /// ```
     #[inline]
     pub fn as_path(&self) -> &Path<Flavor> {
@@ -94,15 +99,47 @@ where
 {
     type Error = std::path::PathBuf;
 
-    fn try_from(buf: std::path::PathBuf) -> Result<Self, Self::Error> {
-        if Flavor::accepts(&buf) {
-            Ok(Self {
-                _flavor: PhantomData,
-                inner: buf,
-            })
+    fn try_from(path: std::path::PathBuf) -> Result<Self, Self::Error> {
+        if Flavor::accepts(&path) {
+            Ok(Self::new_trusted(path))
         } else {
-            Err(buf)
+            Err(path)
         }
+    }
+}
+
+impl<Flavor> TryFrom<&std::path::Path> for PathBuf<Flavor>
+where
+    Flavor: PathFlavor,
+{
+    type Error = StdPathBuf;
+
+    fn try_from(path: &std::path::Path) -> Result<Self, Self::Error> {
+        Self::try_from(path.to_path_buf())
+    }
+}
+
+impl<Flavor> TryFrom<&str> for PathBuf<Flavor>
+where
+    Flavor: PathFlavor,
+{
+    type Error = StdPathBuf;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
+        Self::try_from(std::path::PathBuf::from(s))
+    }
+}
+
+impl<Flavor> TryFrom<String> for PathBuf<Flavor>
+where
+    Flavor: PathFlavor,
+{
+    type Error = StdPathBuf;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
+        Self::try_from(std::path::PathBuf::from(s))
     }
 }
 
@@ -117,5 +154,20 @@ impl<Flavor> AsRef<StdPath> for PathBuf<Flavor> {
     #[inline]
     fn as_ref(&self) -> &StdPath {
         &self.inner
+    }
+}
+
+impl<Flavor> fmt::Debug for PathBuf<Flavor>
+where
+    Flavor: PathFlavor,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<Flavor: PathFlavor> PartialEq for PathBuf<Flavor> {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
     }
 }

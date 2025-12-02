@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, marker::PhantomData, path::Path as StdPath};
+use std::{ffi::OsStr, fmt, marker::PhantomData, path::Path as StdPath};
 
 use crate::{
     errors::PathFlavorError,
@@ -98,5 +98,20 @@ impl Path<Relative> {
     /// `path` is a relative path, and then joins it. The result remains relative.
     pub fn try_join<P: AsRef<StdPath>>(&self, path: P) -> Result<RelPathBuf, PathFlavorError> {
         Ok(self.join(RelPath::try_new(&path)?))
+    }
+}
+
+impl<Flavor> fmt::Debug for Path<Flavor>
+where
+    Flavor: PathFlavor,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_inner().fmt(f)
+    }
+}
+
+impl<Flavor: PathFlavor> PartialEq for Path<Flavor> {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
     }
 }
