@@ -1,9 +1,4 @@
-use std::{
-    ffi::OsStr,
-    fmt,
-    marker::PhantomData,
-    path::{Path as StdPath, PathBuf as StdPathBuf},
-};
+use std::{ffi::OsStr, fmt, marker::PhantomData};
 
 use crate::{
     flavors::{Absolute, Any, PathFlavor, Relative},
@@ -15,7 +10,7 @@ use crate::{
 #[repr(transparent)]
 pub struct PathBuf<Flavor = Any> {
     _flavor: PhantomData<Flavor>,
-    inner: StdPathBuf,
+    inner: std::path::PathBuf,
 }
 
 /// Owned, typed, absolute path ('PathBuf<Absolute>').
@@ -47,10 +42,12 @@ where
     /// # Examples
     ///
     /// ```
-    /// use relabs::{AbsPath, PathBuf, AbsPathBuf};
+    /// use relabs::{AbsPath, AbsPathBuf, PathBuf, Path};
     ///
-    /// let p = AbsPathBuf::try_from("/test").unwrap();
-    /// assert_eq!(AbsPath::new("/test").unwrap(), p.as_path());
+    /// let abs_path = AbsPathBuf::try_from("/test").unwrap();
+    /// let any_path = PathBuf::from("/test");
+    /// assert_eq!(AbsPath::new("/test").unwrap(), abs_path.as_path());
+    /// assert_eq!(Path::new("/test"), any_path.as_path());
     /// ```
     #[inline]
     pub fn as_path(&self) -> &Path<Flavor> {
@@ -59,39 +56,90 @@ where
 
     #[must_use]
     #[inline]
-    pub fn into_inner(self) -> StdPathBuf {
+    pub fn into_inner(self) -> std::path::PathBuf {
         self.inner
-    }
-
-    #[inline]
-    pub fn push(&mut self, rhs: &RelPath) {
-        self.inner.push(rhs.as_inner());
-    }
-
-    /// Replaces the path with the given path.
-    #[inline]
-    pub fn set<P: AsRef<Path>>(&mut self, new: P) {
-        self.inner = new.as_ref().as_inner().to_path_buf();
     }
 }
 
 // Public per-flavor wrappers.
 
+// PatBuf<Flavor = Any>
 impl PathBuf {
+    /// Allocates an empty [`PathBuf<Falvor = Any>`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relabs::PathBuf;
+    ///
+    /// let path = PathBuf::new();
+    /// ```
     #[inline]
     pub fn new() -> Self {
         Self::new_trusted(std::path::PathBuf::new())
     }
+
+    /// Creates a new [`PathBuf<Flavor = Any>`] with a given capacity used to create the
+    /// internal [`std::path::PathBuf`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relabs::PathBuf;
+    ///
+    /// let mut path = PathBuf::with_capacity(10);
+    /// let capacity = path.capacity();
+    ///
+    /// // This push is done without reallocating
+    /// path.push(r"C:\");
+    ///
+    /// assert_eq!(capacity, path.capacity());
+    /// ```
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> PathBuf {
+        Self::new_trusted(std::path::PathBuf::with_capacity(capacity))
+    }
+
+    #[inline]
+    pub fn set<P: AsRef<Path>>(&mut self, new: P) {
+        self.inner = new.as_ref().as_inner().to_path_buf();
+    }
+
+    #[inline]
+    pub fn push<P: AsRef<Path>>(&mut self, rhs: P) {
+        self.inner.push(rhs.as_ref().as_inner());
+        debug_assert!(Any::accepts(&self.inner));
+    }
 }
 
-impl Default for PathBuf<Any> {
+impl PathBuf<Relative> {
+    #[inline]
+    pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
+        self.inner.push(rhs.as_ref().as_inner());
+        debug_assert!(Relative::accepts(&self.inner));
+    }
+}
+
+impl PathBuf<Absolute> {
+    #[inline]
+    pub fn push<P: AsRef<Path>>(&mut self, rhs: P) {
+        self.inner.push(rhs.as_ref().as_inner());
+        debug_assert!(Relative::accepts(&self.inner));
+    }
+}
+
+impl Default for PathBuf {
     fn default() -> Self {
         Self {
             _flavor: PhantomData,
-            inner: StdPathBuf::default(),
+            inner: std::path::PathBuf::default(),
         }
     }
 }
+
+//////////////////////////////////////////////////////////////
+// Conversions
+//////////////////////////////////////////////////////////////
 
 impl<Flavor> TryFrom<std::path::PathBuf> for PathBuf<Flavor>
 where
@@ -112,7 +160,7 @@ impl<Flavor> TryFrom<&std::path::Path> for PathBuf<Flavor>
 where
     Flavor: PathFlavor,
 {
-    type Error = StdPathBuf;
+    type Error = std::path::PathBuf;
 
     fn try_from(path: &std::path::Path) -> Result<Self, Self::Error> {
         Self::try_from(path.to_path_buf())
@@ -123,7 +171,7 @@ impl<Flavor> TryFrom<&str> for PathBuf<Flavor>
 where
     Flavor: PathFlavor,
 {
-    type Error = StdPathBuf;
+    type Error = std::path::PathBuf;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
@@ -135,7 +183,7 @@ impl<Flavor> TryFrom<String> for PathBuf<Flavor>
 where
     Flavor: PathFlavor,
 {
-    type Error = StdPathBuf;
+    type Error = std::path::PathBuf;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
@@ -150,9 +198,9 @@ impl<Flavor> AsRef<OsStr> for PathBuf<Flavor> {
     }
 }
 
-impl<Flavor> AsRef<StdPath> for PathBuf<Flavor> {
+impl<Flavor> AsRef<std::path::Path> for PathBuf<Flavor> {
     #[inline]
-    fn as_ref(&self) -> &StdPath {
+    fn as_ref(&self) -> &std::path::Path {
         &self.inner
     }
 }

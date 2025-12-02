@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, fmt, marker::PhantomData, path::Path as StdPath};
+use std::{ffi::OsStr, fmt, marker::PhantomData};
 
 use crate::{
     errors::PathFlavorError,
@@ -11,7 +11,7 @@ use crate::{
 #[repr(transparent)]
 pub struct Path<Flavor = Any> {
     _flavor: PhantomData<Flavor>,
-    inner: StdPath,
+    inner: std::path::Path,
 }
 
 /// Borrowed, typed, absolute path ('Path<Absolute>').
@@ -29,25 +29,28 @@ where
     Flavor: PathFlavor,
 {
     /// Caller must ensure `invariant` holds.
-    pub(crate) fn new_trusted<P: AsRef<StdPath> + ?Sized>(path: &P) -> &Self {
+    pub(crate) fn new_trusted<P: AsRef<std::path::Path> + ?Sized>(path: &P) -> &Self {
         internal::convert_ref(path.as_ref())
     }
 
     #[inline]
-    pub fn new<P: AsRef<StdPath> + ?Sized>(path: &P) -> Option<&Self> {
+    pub fn try_new<P: AsRef<std::path::Path> + ?Sized>(path: &P) -> Result<&Self, PathFlavorError> {
         let path = path.as_ref();
-        Flavor::accepts(path).then(|| Self::new_trusted(path))
+        Flavor::accepts(path)
+            .then(|| Self::new_trusted(path))
+            .ok_or_else(|| PathFlavorError::WrongFlavor(path.to_path_buf()))
     }
 
     #[inline]
-    pub fn try_new<P: AsRef<StdPath> + ?Sized>(path: &P) -> Result<&Self, PathFlavorError> {
-        let path = path.as_ref();
-        Self::new(path).ok_or_else(|| PathFlavorError::WrongFlavor(path.to_path_buf()))
-    }
-
-    #[inline]
-    pub fn as_inner(&self) -> &StdPath {
+    pub fn as_inner(&self) -> &std::path::Path {
         &self.inner
+    }
+}
+
+impl Path {
+    #[inline]
+    pub fn new<P: AsRef<std::path::Path> + ?Sized>(path: &P) -> &Self {
+        Self::new_trusted(path)
     }
 }
 
@@ -58,9 +61,9 @@ impl<Flavor> AsRef<OsStr> for Path<Flavor> {
     }
 }
 
-impl<Flavor> AsRef<StdPath> for Path<Flavor> {
+impl<Flavor> AsRef<std::path::Path> for Path<Flavor> {
     #[inline]
-    fn as_ref(&self) -> &StdPath {
+    fn as_ref(&self) -> &std::path::Path {
         &self.inner
     }
 }
@@ -79,7 +82,10 @@ impl Path<Absolute> {
     ///
     /// This is the fallible counterpart to [`join`]. It first validates that
     /// `path` is a relative path, and then joins it. The result remains absolute.
-    pub fn try_join<P: AsRef<StdPath>>(&self, path: P) -> Result<AbsPathBuf, PathFlavorError> {
+    pub fn try_join<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+    ) -> Result<AbsPathBuf, PathFlavorError> {
         Ok(self.join(RelPath::try_new(&path)?))
     }
 }
@@ -96,7 +102,10 @@ impl Path<Relative> {
     ///
     /// This is the fallible counterpart to [`join`]. It first validates that
     /// `path` is a relative path, and then joins it. The result remains relative.
-    pub fn try_join<P: AsRef<StdPath>>(&self, path: P) -> Result<RelPathBuf, PathFlavorError> {
+    pub fn try_join<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+    ) -> Result<RelPathBuf, PathFlavorError> {
         Ok(self.join(RelPath::try_new(&path)?))
     }
 }
