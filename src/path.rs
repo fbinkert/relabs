@@ -1,11 +1,10 @@
 use std::{
     borrow::Cow,
     ffi::OsStr,
-    fmt::{self, Display},
+    fmt::{self},
     fs, io,
     marker::PhantomData,
-    option::Iter,
-    path::{Ancestors, Components, Prefix, StripPrefixError},
+    path::{Ancestors, Components, StripPrefixError},
 };
 
 use crate::{
@@ -80,26 +79,6 @@ where
     #[inline]
     pub fn as_os_str(&self) -> &OsStr {
         self.inner.as_os_str()
-    }
-
-    /// Yields a mutable reference to the underlying [`OsStr`] slice.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use relabs::{Path, PathBuf};
-    ///
-    /// let mut path = PathBuf::from("Foo.TXT");
-    ///
-    /// assert_ne!(path, Path::new("foo.txt"));
-    ///
-    /// path.as_mut_os_str().make_ascii_lowercase();
-    /// assert_eq!(path, Path::new("foo.txt"));
-    /// ```
-    #[must_use]
-    #[inline]
-    pub fn as_mut_os_str(&mut self) -> &mut OsStr {
-        self.inner.as_mut_os_str()
     }
 
     /// Yields a [`&str`] slice if the `Path` is valid unicode.
@@ -353,7 +332,7 @@ where
     /// ```
     pub fn strip_prefix<P>(&self, base: P) -> Result<&RelPath, StripPrefixError>
     where
-        P: AsRef<Path>,
+        P: AsRef<std::path::Path>,
     {
         self.inner
             .strip_prefix(base.as_ref())
@@ -384,7 +363,7 @@ where
     /// ```
     #[must_use]
     #[inline]
-    pub fn starts_with<P: AsRef<Path>>(&self, base: P) -> bool {
+    pub fn starts_with<P: AsRef<std::path::Path>>(&self, base: P) -> bool {
         self.inner.starts_with(base.as_ref())
     }
 
@@ -408,7 +387,7 @@ where
     /// ```
     #[must_use]
     #[inline]
-    pub fn ends_with<P: AsRef<Path>>(&self, child: P) -> bool {
+    pub fn ends_with<P: AsRef<std::path::Path>>(&self, child: P) -> bool {
         self.inner.ends_with(child.as_ref())
     }
 
@@ -909,15 +888,15 @@ impl Path<Absolute> {
     /// let path_link = path.read_link().expect("read_link call failed");
     /// ```
     #[inline]
-    pub fn read_link(&self) -> io::Result<AbsPathBuf> {
+    pub fn read_link(&self) -> io::Result<PathBuf<Any>> {
         self.inner.read_link().map(PathBuf::new_trusted)
     }
 }
 
 impl Path<Relative> {
-    /// Joins a relative path onto this relatvie path.
+    /// Joins a relative path onto this relattive path.
     ///
-    /// The result remains relarive.
+    /// The result remains relative.
     pub fn join(&self, path: &RelPath) -> RelPathBuf {
         internal::join_impl(self, path)
     }

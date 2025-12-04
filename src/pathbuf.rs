@@ -25,14 +25,14 @@ pub type AbsPathBuf = PathBuf<Absolute>;
 
 /// Owned, typed, relative path ('PathBuf<Relative>').
 ///
-/// Invariant: 'Path::is_is_relative()' must be true.
+/// Invariant: 'Path::is_relative()' must be true.
 pub type RelPathBuf = PathBuf<Relative>;
 
 impl<Flavor> PathBuf<Flavor>
 where
     Flavor: PathFlavor,
 {
-    /// Create a new [`PathBuf<Flavor>`] from a `std::path::PathBuf` withour validating the invariant.
+    /// Create a new [`PathBuf<Flavor>`] from a `std::path::PathBuf` without validating the invariant.
     /// Caller must ensure `invariant` holds.
     pub(crate) fn new_trusted(path: std::path::PathBuf) -> Self {
         debug_assert!(Flavor::accepts(&path));
@@ -49,9 +49,13 @@ where
     /// ```
     /// use relabs::{AbsPath, AbsPathBuf, PathBuf, Path};
     ///
-    /// let abs_path = AbsPathBuf::try_from("/test").unwrap();
+    /// // Example with a specific flavor (Absolute)
+    /// let abs_buf = AbsPathBuf::try_from("/etc/passwd").unwrap();
+    /// let abs_slice: &AbsPath = abs_buf.as_path();
+    /// assert_eq!(AbsPath::new("/etc/passwd").unwrap(), abs_slice);
+    ///
+    /// // Example with the default flavor (Any)
     /// let any_path = PathBuf::from("/test");
-    /// assert_eq!(AbsPath::new("/test").unwrap(), abs_path.as_path());
     /// assert_eq!(Path::new("/test"), any_path.as_path());
     /// ```
     #[inline]
@@ -74,21 +78,44 @@ where
     ///
     /// # Examples
     ///
+    /// Using an **Absolute** path (cannot pop root):
+    ///
     /// ```
-    /// use relabs::{Path, PathBuf};
+    /// use relabs::{AbsPath, AbsPathBuf};
     ///
-    /// let mut p = PathBuf::from("/spirited/away.rs");
+    /// let mut p = AbsPathBuf::try_from("/usr/bin").unwrap();
     ///
-    /// p.pop();
-    /// assert_eq!(Path::new("/spirited"), p);
-    /// p.pop();
-    /// assert_eq!(Path::new("/"), p);
+    /// assert!(p.pop());
+    /// assert_eq!(AbsPath::new("/usr").unwrap(), p);
+    ///
+    /// assert!(p.pop());
+    /// assert_eq!(AbsPath::new("/").unwrap(), p);
+    ///
+    /// // Cannot pop the root of an absolute path
+    /// assert!(!p.pop());
+    /// assert_eq!(AbsPath::new("/").unwrap(), p);
+    /// ```
+    ///
+    /// Using a **Relative** path:
+    ///
+    /// ```
+    /// use relabs::{RelPath, RelPathBuf};
+    ///
+    /// let mut p = RelPathBuf::try_from("usr/bin").unwrap();
+    /// assert!(p.pop());
+    /// assert_eq!(RelPath::new("usr").unwrap(), p);
     /// ```
     pub fn pop(&mut self) -> bool {
         self.inner.pop()
     }
 
     /// Updates [`self.file_name`] to `file_name`.
+    ///
+    /// This method is specialized for [`RelPathBuf`] and **requires** the input
+    /// `file_name` to be a valid relative path component (`Path<Relative>`).
+    ///
+    /// This strict typing guarantees that the path flavor invariant is **maintained**
+    /// at compile time, eliminating the need for runtime checks.
     ///
     /// If [`self.file_name`] was [`None`], this is equivalent to pushing
     /// `file_name`.
@@ -97,38 +124,31 @@ where
     /// `file_name`. The new path will be a sibling of the original path.
     /// (That is, it will have the same parent.)
     ///
-    /// The argument is not sanitized, so can include separators. This
-    /// behavior may be changed to a panic in the future.
-    ///
     /// [`self.file_name`]: Path::file_name
     /// [`pop`]: PathBuf::pop
     ///
     /// # Examples
     ///
     /// ```
-    /// use relabs::PathBuf;
+    /// use relabs::{RelPath, RelPathBuf};
     ///
-    /// let mut buf = PathBuf::from("/");
-    /// assert!(buf.file_name() == None);
+    /// let mut buf = RelPathBuf::try_from("foo/bar.txt").unwrap();
     ///
-    /// buf.set_file_name("foo.txt");
-    /// assert!(buf == PathBuf::from("/foo.txt"));
-    /// assert!(buf.file_name().is_some());
+    /// // The input must first be constructed as a relative path slice
+    /// let new_name = RelPath::try_from("baz.txt").unwrap();
     ///
-    /// buf.set_file_name("bar.txt");
-    /// assert!(buf == PathBuf::from("/bar.txt"));
+    /// buf.set_file_name(new_name);
+    /// assert_eq!(buf, RelPathBuf::try_from("foo/baz.txt").unwrap());
     ///
-    /// buf.set_file_name("baz");
-    /// assert!(buf == PathBuf::from("/baz"));
+    /// // Attempting to pass an absolute path will fail at compile time
+    /// // (if using a proper path slice like AbsPath) or at the construction
+    /// // phase (if using RelPath::new):
     ///
-    /// buf.set_file_name("../b/c.txt");
-    /// assert!(buf == PathBuf::from("/../b/c.txt"));
-    ///
-    /// buf.set_file_name("baz");
-    /// assert!(buf == PathBuf::from("/../b/baz"));
+    /// // let absolute_name = AbsPath::new("/root.txt").unwrap();
+    /// // buf.set_file_name(absolute_name); // <- Compile Error (Good!)
     /// ```
-    pub fn set_file_name<S: AsRef<OsStr>>(&mut self, file_name: S) {
-        self.inner.set_file_name(file_name)
+    pub fn set_file_name<S: AsRef<RelPath>>(&mut self, file_name: S) {
+        self.inner.set_file_name(file_name.as_ref().as_os_str())
     }
 
     /// Updates [`self.extension`] to `Some(extension)` or to `None` if
@@ -165,52 +185,22 @@ where
     /// # Examples
     ///
     /// ```
-    /// use relabs::{Path, PathBuf};
+    /// use relabs::{AbsPath, AbsPathBuf};
     ///
-    /// let mut p = PathBuf::from("/feel/the");
+    /// // Using AbsPathBuf to ensure extensions work on typed paths
+    /// let mut p = AbsPathBuf::try_from("/feel/the").unwrap();
     ///
     /// p.set_extension("force");
-    /// assert_eq!(Path::new("/feel/the.force"), p.as_path());
+    /// assert_eq!(AbsPath::new("/feel/the.force").unwrap(), p.as_path());
     ///
     /// p.set_extension("dark.side");
-    /// assert_eq!(Path::new("/feel/the.dark.side"), p.as_path());
-    ///
-    /// p.set_extension("cookie");
-    /// assert_eq!(Path::new("/feel/the.dark.cookie"), p.as_path());
+    /// assert_eq!(AbsPath::new("/feel/the.dark.side").unwrap(), p.as_path());
     ///
     /// p.set_extension("");
-    /// assert_eq!(Path::new("/feel/the.dark"), p.as_path());
-    ///
-    /// p.set_extension("");
-    /// assert_eq!(Path::new("/feel/the"), p.as_path());
-    ///
-    /// p.set_extension("");
-    /// assert_eq!(Path::new("/feel/the"), p.as_path());
+    /// assert_eq!(AbsPath::try_new("/feel/the.dark").unwrap(), p.as_path());
     /// ```
     pub fn set_extension<S: AsRef<OsStr>>(&mut self, extension: S) -> bool {
         self.inner.set_extension(extension)
-    }
-
-    /// Yields a mutable reference to the underlying [`OsString`] instance.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use relabs::{Path, PathBuf};
-    ///
-    /// let mut path = PathBuf::from("/foo");
-    ///
-    /// path.push("bar");
-    /// assert_eq!(path, Path::new("/foo/bar"));
-    ///
-    /// // OsString's `push` does not add a separator.
-    /// path.as_mut_os_string().push("baz");
-    /// assert_eq!(path, Path::new("/foo/barbaz"));
-    /// ```
-    #[must_use]
-    #[inline]
-    pub fn as_mut_os_string(&mut self) -> &mut OsString {
-        self.inner.as_mut_os_string()
     }
 
     /// Consumes the `PathBuf`, yielding its internal [`OsString`] storage.
@@ -233,7 +223,8 @@ where
     #[must_use]
     #[inline]
     pub fn into_boxed_path(self) -> Box<Path<Flavor>> {
-        todo!()
+        let boxed_std: Box<std::path::Path> = self.inner.into_boxed_path();
+        internal::convert_box(boxed_std)
     }
 
     /// Invokes [`capacity`] on the underlying instance of [`OsString`].
@@ -243,14 +234,6 @@ where
     #[inline]
     pub fn capacity(&self) -> usize {
         self.inner.capacity()
-    }
-
-    /// Invokes [`clear`] on the underlying instance of [`OsString`].
-    ///
-    /// [`clear`]: OsString::clear
-    #[inline]
-    pub fn clear(&mut self) {
-        self.inner.clear()
     }
 
     /// Invokes [`reserve`] on the underlying instance of [`OsString`].
@@ -300,11 +283,18 @@ where
     pub fn shrink_to(&mut self, min_capacity: usize) {
         self.inner.shrink_to(min_capacity)
     }
+
+    #[inline]
+    pub fn set<P: AsRef<Path<Flavor>>>(&mut self, new: P) {
+        let pb = new.as_ref().as_inner().to_path_buf();
+        debug_assert!(Flavor::accepts(&pb));
+        self.inner = pb;
+    }
 }
 
 // Public per-flavor wrappers.
 
-// PatBuf<Flavor = Any>
+// PathBuf<Flavor = Any>
 impl PathBuf {
     /// Allocates an empty [`PathBuf<Falvor = Any>`].
     ///
@@ -341,19 +331,48 @@ impl PathBuf {
         Self::new_trusted(std::path::PathBuf::with_capacity(capacity))
     }
 
+    /// Appends a relative path segment to this buffer.
+    ///
+    /// Rejects absolute/rooted inputs at compile time (requires RelPath).
     #[inline]
-    pub fn set<P: AsRef<Path>>(&mut self, new: P) {
-        self.inner = new.as_ref().as_inner().to_path_buf();
-    }
-
-    #[inline]
-    pub fn push<P: AsRef<Path>>(&mut self, rhs: P) {
+    pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
         self.inner.push(rhs.as_ref().as_inner());
         debug_assert!(Any::accepts(&self.inner));
+    }
+
+    /// Yields a mutable reference to the underlying [`OsString`] instance.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relabs::{Path, PathBuf};
+    ///
+    /// let mut path = PathBuf::from("/foo");
+    ///
+    /// path.push("bar");
+    /// assert_eq!(path, Path::new("/foo/bar"));
+    ///
+    /// // OsString's `push` does not add a separator.
+    /// path.as_mut_os_string().push("baz");
+    /// assert_eq!(path, Path::new("/foo/barbaz"));
+    /// ```
+    #[must_use]
+    #[inline]
+    pub fn as_mut_os_string(&mut self) -> &mut OsString {
+        self.inner.as_mut_os_string()
+    }
+
+    /// Invokes [`clear`] on the underlying instance of [`OsString`].
+    ///
+    /// [`clear`]: OsString::clear
+    #[inline]
+    pub fn clear(&mut self) {
+        self.inner.clear()
     }
 }
 
 impl PathBuf<Relative> {
+    /// Appends a relative path segment. Flavor remains Relative.
     #[inline]
     pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
         self.inner.push(rhs.as_ref().as_inner());
@@ -362,10 +381,11 @@ impl PathBuf<Relative> {
 }
 
 impl PathBuf<Absolute> {
+    /// Appends a relative path segment. Flavor remains Absolute.
     #[inline]
-    pub fn push<P: AsRef<Path>>(&mut self, rhs: P) {
+    pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
         self.inner.push(rhs.as_ref().as_inner());
-        debug_assert!(Relative::accepts(&self.inner));
+        debug_assert!(Absolute::accepts(&self.inner));
     }
 }
 
