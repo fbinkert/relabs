@@ -297,11 +297,11 @@ where
     pub fn replace_with<T, P>(self, rhs: P) -> PathBuf<T>
     where
         T: PathFlavor,
-        P: AsRef<PathBuf<T>>,
+        P: AsRef<Path<T>>,
     {
         let mut inner = self.into_inner();
         inner.clear();
-        inner.push(rhs.as_ref());
+        inner.push(rhs.as_ref().as_inner());
         debug_assert!(T::accepts(&inner));
         PathBuf::<T>::new_trusted(inner)
     }
@@ -317,6 +317,24 @@ where
     #[inline]
     pub fn try_push<P: AsRef<std::path::Path>>(&mut self, rhs: P) -> Result<(), PathFlavorError> {
         self.push(RelPath::try_new(&rhs)?);
+        Ok(())
+    }
+
+    // Borrowed input. Reuses existing allocation. Does not change flavor.
+    // Is a clear followed by std's push.
+    // Use `replace_with` to change flavor.
+    #[inline]
+    pub fn set<P: AsRef<Path<Flavor>>>(&mut self, new: P) {
+        let p = new.as_ref().as_inner();
+        self.inner.clear();
+        self.inner.push(p);
+        debug_assert!(Absolute::accepts(&self.inner));
+    }
+
+    /// Untyped fallible version of [`set`].
+    #[inline]
+    pub fn try_set<P: AsRef<std::path::Path>>(&mut self, new: P) -> Result<(), PathFlavorError> {
+        self.set(Path::<Flavor>::try_new(&new)?);
         Ok(())
     }
 }
@@ -388,58 +406,11 @@ impl AnyPathBuf {
     pub fn clear(&mut self) {
         self.inner.clear()
     }
-
-    // Borrowed input. Reuses existing allocation. Does not change flavor.
-    // Is a clear followed by std's push.
-    // Use `replace_with` to change flavor.
-    #[inline]
-    pub fn set<P: AsRef<AnyPath>>(&mut self, new: P) {
-        let p = new.as_ref().as_inner();
-        self.inner.clear();
-        self.inner.push(p);
-        debug_assert!(Any::accepts(&self.inner));
-    }
 }
 
-impl PathBuf<Relative> {
-    // Borrowed input. Reuses existing allocation. Does not change flavor.
-    // Is a clear followed by std's push.
-    // Use `replace_with` to change flavor.
-    #[inline]
-    pub fn set<P: AsRef<RelPath>>(&mut self, new: P) {
-        let p = new.as_ref().as_inner();
-        self.inner.clear();
-        self.inner.push(p);
-        debug_assert!(Relative::accepts(&self.inner));
-    }
+impl PathBuf<Relative> {}
 
-    /// Untyped fallible version of [`set`].
-    #[inline]
-    pub fn try_set<P: AsRef<std::path::Path>>(&mut self, new: P) -> Result<(), PathFlavorError> {
-        self.set(RelPath::try_new(&new)?);
-        Ok(())
-    }
-}
-
-impl PathBuf<Absolute> {
-    // Borrowed input. Reuses existing allocation. Does not change flavor.
-    // Is a clear followed by std's push.
-    // Use `replace_with` to change flavor.
-    #[inline]
-    pub fn set<P: AsRef<AbsPath>>(&mut self, new: P) {
-        let p = new.as_ref().as_inner();
-        self.inner.clear();
-        self.inner.push(p);
-        debug_assert!(Absolute::accepts(&self.inner));
-    }
-
-    /// Untyped fallible version of [`set`].
-    #[inline]
-    pub fn try_set<P: AsRef<std::path::Path>>(&mut self, new: P) -> Result<(), PathFlavorError> {
-        self.set(AbsPath::try_new(&new)?);
-        Ok(())
-    }
-}
+impl PathBuf<Absolute> {}
 
 impl Default for PathBuf {
     fn default() -> Self {
