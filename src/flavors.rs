@@ -1,4 +1,5 @@
-use std::path::Path;
+use core::fmt;
+use std::{convert::Infallible, path::Path};
 
 mod private {
     pub trait Sealed {}
@@ -19,6 +20,24 @@ pub struct Any;
 impl private::Sealed for Absolute {}
 impl private::Sealed for Relative {}
 impl private::Sealed for Any {}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct TryAbsoluteError;
+
+impl fmt::Display for TryAbsoluteError {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(fmt, "path was not an absolute path")
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct TryRelativeError;
+
+impl fmt::Display for TryRelativeError {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(fmt, "path was not a relative path")
+    }
+}
 
 impl PathFlavor for Absolute {
     fn accepts<P: AsRef<Path> + ?Sized>(path: &P) -> bool {

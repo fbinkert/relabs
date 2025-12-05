@@ -6,6 +6,8 @@ use std::{
 };
 
 use crate::{
+    AbsPath, AnyPath,
+    errors::PathFlavorError,
     flavors::{Absolute, Any, PathFlavor, Relative},
     internal,
     path::{Path, RelPath},
@@ -27,6 +29,11 @@ pub type AbsPathBuf = PathBuf<Absolute>;
 ///
 /// Invariant: 'Path::is_relative()' must be true.
 pub type RelPathBuf = PathBuf<Relative>;
+
+/// Owned, unconstrained path ('PathBuf<Any>').
+///
+/// Invariant: No invariant.
+pub type AnyPathBuf = PathBuf<Any>;
 
 impl<Flavor> PathBuf<Flavor>
 where
@@ -52,7 +59,7 @@ where
     /// // Example with a specific flavor (Absolute)
     /// let abs_buf = AbsPathBuf::try_from("/etc/passwd").unwrap();
     /// let abs_slice: &AbsPath = abs_buf.as_path();
-    /// assert_eq!(AbsPath::new("/etc/passwd").unwrap(), abs_slice);
+    /// assert_eq!(AbsPath::try_new("/etc/passwd").unwrap(), abs_slice);
     ///
     /// // Example with the default flavor (Any)
     /// let any_path = PathBuf::from("/test");
@@ -86,14 +93,14 @@ where
     /// let mut p = AbsPathBuf::try_from("/usr/bin").unwrap();
     ///
     /// assert!(p.pop());
-    /// assert_eq!(AbsPath::new("/usr").unwrap(), p);
+    /// assert_eq!(AbsPath::try_new("/usr").unwrap(), p);
     ///
     /// assert!(p.pop());
-    /// assert_eq!(AbsPath::new("/").unwrap(), p);
+    /// assert_eq!(AbsPath::try_new("/").unwrap(), p);
     ///
     /// // Cannot pop the root of an absolute path
     /// assert!(!p.pop());
-    /// assert_eq!(AbsPath::new("/").unwrap(), p);
+    /// assert_eq!(AbsPath::try_new("/").unwrap(), p);
     /// ```
     ///
     /// Using a **Relative** path:
@@ -103,7 +110,7 @@ where
     ///
     /// let mut p = RelPathBuf::try_from("usr/bin").unwrap();
     /// assert!(p.pop());
-    /// assert_eq!(RelPath::new("usr").unwrap(), p);
+    /// assert_eq!(RelPath::try_new("usr").unwrap(), p);
     /// ```
     pub fn pop(&mut self) -> bool {
         self.inner.pop()
@@ -135,16 +142,16 @@ where
     /// let mut buf = RelPathBuf::try_from("foo/bar.txt").unwrap();
     ///
     /// // The input must first be constructed as a relative path slice
-    /// let new_name = RelPath::try_from("baz.txt").unwrap();
+    /// let new_name = RelPath::try_new("baz.txt").unwrap();
     ///
     /// buf.set_file_name(new_name);
     /// assert_eq!(buf, RelPathBuf::try_from("foo/baz.txt").unwrap());
     ///
     /// // Attempting to pass an absolute path will fail at compile time
     /// // (if using a proper path slice like AbsPath) or at the construction
-    /// // phase (if using RelPath::new):
+    /// // phase (if using RelPath::try_new):
     ///
-    /// // let absolute_name = AbsPath::new("/root.txt").unwrap();
+    /// // let absolute_name = AbsPath::try_new("/root.txt").unwrap();
     /// // buf.set_file_name(absolute_name); // <- Compile Error (Good!)
     /// ```
     pub fn set_file_name<S: AsRef<RelPath>>(&mut self, file_name: S) {
@@ -191,10 +198,10 @@ where
     /// let mut p = AbsPathBuf::try_from("/feel/the").unwrap();
     ///
     /// p.set_extension("force");
-    /// assert_eq!(AbsPath::new("/feel/the.force").unwrap(), p.as_path());
+    /// assert_eq!(AbsPath::try_new("/feel/the.force").unwrap(), p.as_path());
     ///
     /// p.set_extension("dark.side");
-    /// assert_eq!(AbsPath::new("/feel/the.dark.side").unwrap(), p.as_path());
+    /// assert_eq!(AbsPath::try_new("/feel/the.dark.side").unwrap(), p.as_path());
     ///
     /// p.set_extension("");
     /// assert_eq!(AbsPath::try_new("/feel/the.dark").unwrap(), p.as_path());
@@ -284,18 +291,39 @@ where
         self.inner.shrink_to(min_capacity)
     }
 
+    // Flavor-changing: consumes self and reuses its buffer (can reuse capacity).
+    // Same as `set` but with changes flavor.
     #[inline]
-    pub fn set<P: AsRef<Path<Flavor>>>(&mut self, new: P) {
-        let pb = new.as_ref().as_inner().to_path_buf();
-        debug_assert!(Flavor::accepts(&pb));
-        self.inner = pb;
+    pub fn replace_with<T, P>(self, rhs: P) -> PathBuf<T>
+    where
+        T: PathFlavor,
+        P: AsRef<PathBuf<T>>,
+    {
+        let mut inner = self.into_inner();
+        inner.clear();
+        inner.push(rhs.as_ref());
+        debug_assert!(T::accepts(&inner));
+        PathBuf::<T>::new_trusted(inner)
+    }
+
+    /// Appends a relative path segment to this buffer.
+    #[inline]
+    pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
+        self.inner.push(rhs.as_ref().as_inner());
+        debug_assert!(Flavor::accepts(&self.inner));
+    }
+
+    /// Untyped fallible version of [`push`].
+    #[inline]
+    pub fn try_push<P: AsRef<std::path::Path>>(&mut self, rhs: P) -> Result<(), PathFlavorError> {
+        self.push(RelPath::try_new(&rhs)?);
+        Ok(())
     }
 }
 
 // Public per-flavor wrappers.
 
-// PathBuf<Flavor = Any>
-impl PathBuf {
+impl AnyPathBuf {
     /// Allocates an empty [`PathBuf<Falvor = Any>`].
     ///
     /// # Examples
@@ -316,28 +344,19 @@ impl PathBuf {
     /// # Examples
     ///
     /// ```
-    /// use relabs::PathBuf;
+    /// use relabs::AnyPathBuf;
     ///
-    /// let mut path = PathBuf::with_capacity(10);
-    /// let capacity = path.capacity();
+    /// let mut any_path = AnyPathBuf::with_capacity(10);
+    /// let capacity = any_path.capacity();
     ///
-    /// // This push is done without reallocating
-    /// path.push(r"C:\");
+    /// // This set is done without reallocating
+    /// any_path.set(r"C:\");
     ///
-    /// assert_eq!(capacity, path.capacity());
+    /// assert_eq!(capacity, any_path.capacity());
     /// ```
     #[inline]
     pub fn with_capacity(capacity: usize) -> PathBuf {
         Self::new_trusted(std::path::PathBuf::with_capacity(capacity))
-    }
-
-    /// Appends a relative path segment to this buffer.
-    ///
-    /// Rejects absolute/rooted inputs at compile time (requires RelPath).
-    #[inline]
-    pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
-        self.inner.push(rhs.as_ref().as_inner());
-        debug_assert!(Any::accepts(&self.inner));
     }
 
     /// Yields a mutable reference to the underlying [`OsString`] instance.
@@ -349,7 +368,7 @@ impl PathBuf {
     ///
     /// let mut path = PathBuf::from("/foo");
     ///
-    /// path.push("bar");
+    /// path.try_push("bar").unwrap();
     /// assert_eq!(path, Path::new("/foo/bar"));
     ///
     /// // OsString's `push` does not add a separator.
@@ -369,23 +388,56 @@ impl PathBuf {
     pub fn clear(&mut self) {
         self.inner.clear()
     }
+
+    // Borrowed input. Reuses existing allocation. Does not change flavor.
+    // Is a clear followed by std's push.
+    // Use `replace_with` to change flavor.
+    #[inline]
+    pub fn set<P: AsRef<AnyPath>>(&mut self, new: P) {
+        let p = new.as_ref().as_inner();
+        self.inner.clear();
+        self.inner.push(p);
+        debug_assert!(Any::accepts(&self.inner));
+    }
 }
 
 impl PathBuf<Relative> {
-    /// Appends a relative path segment. Flavor remains Relative.
+    // Borrowed input. Reuses existing allocation. Does not change flavor.
+    // Is a clear followed by std's push.
+    // Use `replace_with` to change flavor.
     #[inline]
-    pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
-        self.inner.push(rhs.as_ref().as_inner());
+    pub fn set<P: AsRef<RelPath>>(&mut self, new: P) {
+        let p = new.as_ref().as_inner();
+        self.inner.clear();
+        self.inner.push(p);
         debug_assert!(Relative::accepts(&self.inner));
+    }
+
+    /// Untyped fallible version of [`set`].
+    #[inline]
+    pub fn try_set<P: AsRef<std::path::Path>>(&mut self, new: P) -> Result<(), PathFlavorError> {
+        self.set(RelPath::try_new(&new)?);
+        Ok(())
     }
 }
 
 impl PathBuf<Absolute> {
-    /// Appends a relative path segment. Flavor remains Absolute.
+    // Borrowed input. Reuses existing allocation. Does not change flavor.
+    // Is a clear followed by std's push.
+    // Use `replace_with` to change flavor.
     #[inline]
-    pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
-        self.inner.push(rhs.as_ref().as_inner());
+    pub fn set<P: AsRef<AbsPath>>(&mut self, new: P) {
+        let p = new.as_ref().as_inner();
+        self.inner.clear();
+        self.inner.push(p);
         debug_assert!(Absolute::accepts(&self.inner));
+    }
+
+    /// Untyped fallible version of [`set`].
+    #[inline]
+    pub fn try_set<P: AsRef<std::path::Path>>(&mut self, new: P) -> Result<(), PathFlavorError> {
+        self.set(AbsPath::try_new(&new)?);
+        Ok(())
     }
 }
 
@@ -428,10 +480,7 @@ where
     }
 }
 
-impl<Flavor> TryFrom<&str> for PathBuf<Flavor>
-where
-    Flavor: PathFlavor,
-{
+impl TryFrom<&str> for AbsPathBuf {
     type Error = std::path::PathBuf;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
@@ -440,15 +489,42 @@ where
     }
 }
 
-impl<Flavor> TryFrom<String> for PathBuf<Flavor>
-where
-    Flavor: PathFlavor,
-{
+impl TryFrom<&str> for RelPathBuf {
+    type Error = std::path::PathBuf;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
+        Self::try_from(std::path::PathBuf::from(s))
+    }
+}
+
+impl From<&str> for AnyPathBuf {
+    fn from(value: &str) -> Self {
+        Self::new_trusted(std::path::PathBuf::from(value))
+    }
+}
+
+impl TryFrom<String> for AbsPathBuf {
     type Error = std::path::PathBuf;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
         Self::try_from(std::path::PathBuf::from(s))
+    }
+}
+
+impl TryFrom<String> for RelPathBuf {
+    type Error = std::path::PathBuf;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
+        Self::try_from(std::path::PathBuf::from(s))
+    }
+}
+
+impl From<String> for AnyPathBuf {
+    fn from(value: String) -> Self {
+        Self::new_trusted(std::path::PathBuf::from(value))
     }
 }
 
@@ -477,6 +553,20 @@ where
 
 impl<Flavor: PathFlavor> PartialEq for PathBuf<Flavor> {
     fn eq(&self, other: &Self) -> bool {
-        self.inner == other.inner
+        self.as_path() == other.as_path()
+    }
+}
+
+impl<Flavor: PathFlavor> Eq for PathBuf<Flavor> {}
+
+impl<Flavor: PathFlavor> PartialEq<Path<Flavor>> for PathBuf<Flavor> {
+    fn eq(&self, other: &Path<Flavor>) -> bool {
+        self.as_path() == other
+    }
+}
+
+impl<Flavor: PathFlavor> PartialEq<&Path<Flavor>> for PathBuf<Flavor> {
+    fn eq(&self, other: &&Path<Flavor>) -> bool {
+        self.as_path() == *other
     }
 }

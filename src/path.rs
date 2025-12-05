@@ -33,6 +33,11 @@ pub type AbsPath = Path<Absolute>;
 /// Invariant: 'Path::is_relative()' must be true.
 pub type RelPath = Path<Relative>;
 
+/// Borrowed, unconstrained path ('Path<Any>').
+///
+/// Invariant: No invariant
+pub type AnyPath = Path<Any>;
+
 impl<Flavor> Path<Flavor>
 where
     Flavor: PathFlavor,
@@ -317,22 +322,22 @@ where
     /// # Examples
     ///
     /// ```
-    /// use relabs::{Path, PathBuf};
+    /// use relabs::{AnyPath, PathBuf, RelPath};
     ///
-    /// let path = Path::new("/test/haha/foo.txt");
+    /// let path = AnyPath::new("/test/haha/foo.txt");
     ///
-    /// assert_eq!(path.strip_prefix("/"), Ok(Path::new("test/haha/foo.txt")));
-    /// assert_eq!(path.strip_prefix("/test"), Ok(Path::new("haha/foo.txt")));
-    /// assert_eq!(path.strip_prefix("/test/"), Ok(Path::new("haha/foo.txt")));
-    /// assert_eq!(path.strip_prefix("/test/haha/foo.txt"), Ok(Path::new("")));
-    /// assert_eq!(path.strip_prefix("/test/haha/foo.txt/"), Ok(Path::new("")));
+    /// assert_eq!(path.strip_prefix("/").unwrap(), RelPath::try_new("test/haha/foo.txt").unwrap());
+    /// assert_eq!(path.strip_prefix("/test").unwrap(), RelPath::try_new("haha/foo.txt").unwrap());
+    /// assert_eq!(path.strip_prefix("/test/").unwrap(), RelPath::try_new("haha/foo.txt").unwrap());
+    /// assert_eq!(path.strip_prefix("/test/haha/foo.txt").unwrap(), RelPath::try_new("").unwrap());
+    /// assert_eq!(path.strip_prefix("/test/haha/foo.txt/").unwrap(), RelPath::try_new("").unwrap());
     ///
     /// assert!(path.strip_prefix("test").is_err());
     /// assert!(path.strip_prefix("/te").is_err());
     /// assert!(path.strip_prefix("/haha").is_err());
     ///
     /// let prefix = PathBuf::from("/test/");
-    /// assert_eq!(path.strip_prefix(prefix), Ok(Path::new("haha/foo.txt")));
+    /// assert_eq!(path.strip_prefix(prefix).unwrap(), RelPath::try_new("haha/foo.txt").unwrap());
     /// ```
     pub fn strip_prefix<P>(&self, base: P) -> Result<&RelPath, StripPrefixError>
     where
@@ -532,10 +537,11 @@ where
     /// # Examples
     ///
     /// ```
-    /// use relabs::{Path, Component};
+    /// use relabs::AnyPath;
+    /// use std::path::Component;
     /// use std::ffi::OsStr;
     ///
-    /// let mut components = Path::new("/tmp/foo.txt").components();
+    /// let mut components = AnyPath::new("/tmp/foo.txt").components();
     ///
     /// assert_eq!(components.next(), Some(Component::RootDir));
     /// assert_eq!(components.next(), Some(Component::Normal(OsStr::new("tmp"))));
@@ -563,7 +569,7 @@ where
     /// use std::ffi::OsStr;
     ///
     /// let mut it = Path::new("/tmp/foo.txt").iter();
-    /// assert_eq!(it.next(), Some(OsStr::new(&path::MAIN_SEPARATOR.to_string())));
+    /// assert_eq!(it.next(), Some(OsStr::new(&std::path::MAIN_SEPARATOR.to_string())));
     /// assert_eq!(it.next(), Some(OsStr::new("tmp")));
     /// assert_eq!(it.next(), Some(OsStr::new("foo.txt")));
     /// assert_eq!(it.next(), None)
@@ -837,24 +843,59 @@ where
     }
 }
 
-impl Path {
+impl AnyPath {
+    /// Directly wraps a string slice as a `Path<Flavor = Any>` slice.
+    ///
+    /// This is a cost-free conversion.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// Path::new("foo.txt");
+    /// ```
+    ///
+    /// You can create `Path`s from `String`s, or even other `Path`s:
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// let string = String::from("foo.txt");
+    /// let from_string = Path::new(&string);
+    /// let from_path = Path::new(&from_string);
+    /// assert_eq!(from_string, from_path);
+    /// ```
     #[inline]
     pub fn new<P: AsRef<std::path::Path> + ?Sized>(path: &P) -> &Self {
         Self::new_trusted(path)
     }
 }
 
-impl<Flavor> AsRef<OsStr> for Path<Flavor> {
+impl AsRef<AnyPath> for str {
+    fn as_ref(&self) -> &AnyPath {
+        AnyPath::new(self)
+    }
+}
+
+impl<Flavor: PathFlavor> AsRef<OsStr> for Path<Flavor> {
     #[inline]
     fn as_ref(&self) -> &OsStr {
         self.inner.as_os_str()
     }
 }
 
-impl<Flavor> AsRef<std::path::Path> for Path<Flavor> {
+impl<Flavor: PathFlavor> AsRef<std::path::Path> for Path<Flavor> {
     #[inline]
     fn as_ref(&self) -> &std::path::Path {
         &self.inner
+    }
+}
+
+impl<Flavor: PathFlavor> AsRef<Path<Flavor>> for Path<Flavor> {
+    #[inline]
+    fn as_ref(&self) -> &Path<Flavor> {
+        self
     }
 }
 
@@ -929,6 +970,20 @@ where
 impl<Flavor: PathFlavor> PartialEq for Path<Flavor> {
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner
+    }
+}
+
+impl<Flavor: PathFlavor> Eq for Path<Flavor> {}
+
+impl<Flavor: PathFlavor> PartialEq<PathBuf<Flavor>> for Path<Flavor> {
+    fn eq(&self, other: &PathBuf<Flavor>) -> bool {
+        self == other.as_path()
+    }
+}
+
+impl<Flavor: PathFlavor> PartialEq<PathBuf<Flavor>> for &Path<Flavor> {
+    fn eq(&self, other: &PathBuf<Flavor>) -> bool {
+        *self == other.as_path()
     }
 }
 
