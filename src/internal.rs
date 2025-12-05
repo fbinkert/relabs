@@ -12,7 +12,7 @@ where
     L: CanJoin<R>,
     R: PathFlavor,
 {
-    let joined = lhs.as_inner().join(rhs.as_inner());
+    let joined = lhs.as_std().join(rhs.as_std());
     // Safety: allowed pairs guarantee the resulting flavor matches CanJoin::Output
     //
     debug_assert!(<<L as CanJoin<R>>::Output as PathFlavor>::accepts(&joined));

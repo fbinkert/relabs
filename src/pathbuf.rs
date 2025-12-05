@@ -72,7 +72,7 @@ where
 
     #[must_use]
     #[inline]
-    pub fn into_inner(self) -> std::path::PathBuf {
+    pub fn into_std(self) -> std::path::PathBuf {
         self.inner
     }
 
@@ -299,9 +299,9 @@ where
         T: PathFlavor,
         P: AsRef<Path<T>>,
     {
-        let mut inner = self.into_inner();
+        let mut inner = self.into_std();
         inner.clear();
-        inner.push(rhs.as_ref().as_inner());
+        inner.push(rhs.as_ref().as_std());
         debug_assert!(T::accepts(&inner));
         PathBuf::<T>::new_trusted(inner)
     }
@@ -309,7 +309,7 @@ where
     /// Appends a relative path segment to this buffer.
     #[inline]
     pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
-        self.inner.push(rhs.as_ref().as_inner());
+        self.inner.push(rhs.as_ref().as_std());
         debug_assert!(Flavor::accepts(&self.inner));
     }
 
@@ -325,7 +325,7 @@ where
     // Use `replace_with` to change flavor.
     #[inline]
     pub fn set<P: AsRef<Path<Flavor>>>(&mut self, new: P) {
-        let p = new.as_ref().as_inner();
+        let p = new.as_ref().as_std();
         self.inner.clear();
         self.inner.push(p);
         debug_assert!(Absolute::accepts(&self.inner));

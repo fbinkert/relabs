@@ -67,7 +67,7 @@ where
     }
 
     #[inline]
-    pub fn as_inner(&self) -> &std::path::Path {
+    pub fn as_std(&self) -> &std::path::Path {
         &self.inner
     }
 
@@ -963,7 +963,7 @@ where
     Flavor: PathFlavor,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.as_inner().fmt(f)
+        self.as_std().fmt(f)
     }
 }
 
