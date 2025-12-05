@@ -3,8 +3,9 @@ use std::{
     ffi::OsStr,
     fmt::{self},
     fs, io,
+    iter::FusedIterator,
     marker::PhantomData,
-    path::{Ancestors, Components, StripPrefixError},
+    path::{Components, StripPrefixError},
 };
 
 use crate::{
@@ -271,8 +272,11 @@ where
     ///
     /// [`parent`]: Path::parent
     #[inline]
-    pub fn ancestors(&self) -> Ancestors<'_> {
-        todo!()
+    pub fn ancestors(&self) -> Ancestors<'_, Flavor> {
+        Ancestors {
+            _flavor: PhantomData,
+            inner: self.inner.ancestors(),
+        }
     }
 
     /// Returns the final component of the `Path`, if there is one.
@@ -894,7 +898,7 @@ impl Path<Absolute> {
 }
 
 impl Path<Relative> {
-    /// Joins a relative path onto this relattive path.
+    /// Joins a relative path onto this relative path.
     ///
     /// The result remains relative.
     pub fn join(&self, path: &RelPath) -> RelPathBuf {
@@ -927,3 +931,39 @@ impl<Flavor: PathFlavor> PartialEq for Path<Flavor> {
         self.inner == other.inner
     }
 }
+
+/// An iterator over [`Path`] and its ancestors.
+///
+/// This `struct` is created by the [`ancestors`] method on [`Path`].
+/// See its documentation for more.
+///
+/// # Examples
+///
+/// ```
+/// use relabs::Path;
+///
+/// let path = Path::new("/foo/bar");
+///
+/// for ancestor in path.ancestors() {
+///     println!("{}", ancestor.display());
+/// }
+/// ```
+///
+/// [`ancestors`]: Path::ancestors
+#[derive(Copy, Clone, Debug)]
+#[must_use]
+pub struct Ancestors<'a, Flavor: PathFlavor> {
+    _flavor: PhantomData<Flavor>,
+    inner: std::path::Ancestors<'a>,
+}
+
+impl<'a, Flavor: PathFlavor + 'a> Iterator for Ancestors<'a, Flavor> {
+    type Item = &'a Path<Flavor>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(Path::new_trusted)
+    }
+}
+
+impl<'a, Flavor: PathFlavor + 'a> FusedIterator for Ancestors<'a, Flavor> {}
