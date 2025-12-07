@@ -1,23 +1,4 @@
-use crate::{
-    flavors::{CanJoin, PathFlavor},
-    path::Path,
-    pathbuf::PathBuf,
-};
-
-// Generic join core restricted to flavor-compatible LHS and RHS.
-#[must_use]
-#[inline]
-pub(crate) fn join_impl<L, R>(lhs: &Path<L>, rhs: &Path<R>) -> PathBuf<<L as CanJoin<R>>::Output>
-where
-    L: CanJoin<R>,
-    R: PathFlavor,
-{
-    let joined = lhs.as_std().join(rhs.as_std());
-    // Safety: allowed pairs guarantee the resulting flavor matches CanJoin::Output
-    //
-    debug_assert!(<<L as CanJoin<R>>::Output as PathFlavor>::accepts(&joined));
-    PathBuf::new_trusted(joined)
-}
+use crate::{flavors::PathFlavor, path::Path};
 
 /// Internal helper to perform the zero-cost reference conversion.
 ///

@@ -1,5 +1,4 @@
-use core::fmt;
-use std::{convert::Infallible, path::Path};
+use std::path::Path;
 
 mod private {
     pub trait Sealed {}
@@ -21,24 +20,6 @@ impl private::Sealed for Absolute {}
 impl private::Sealed for Relative {}
 impl private::Sealed for Any {}
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct TryAbsoluteError;
-
-impl fmt::Display for TryAbsoluteError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "path was not an absolute path")
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct TryRelativeError;
-
-impl fmt::Display for TryRelativeError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "path was not a relative path")
-    }
-}
-
 impl PathFlavor for Absolute {
     fn accepts<P: AsRef<Path> + ?Sized>(path: &P) -> bool {
         path.as_ref().is_absolute()
@@ -57,14 +38,15 @@ impl PathFlavor for Any {
     }
 }
 
-pub trait CanJoin<Rhs: PathFlavor>: PathFlavor + private::Sealed {
+pub trait PathJoin: PathFlavor {
     type Output: PathFlavor;
 }
-
-impl CanJoin<Relative> for Absolute {
-    type Output = Absolute;
+impl PathJoin for Any {
+    type Output = Self;
 }
-
-impl CanJoin<Relative> for Relative {
-    type Output = Relative;
+impl PathJoin for Relative {
+    type Output = Any;
+}
+impl PathJoin for Absolute {
+    type Output = Self;
 }

@@ -6,7 +6,6 @@ use std::{
 };
 
 use crate::{
-    AbsPath, AnyPath,
     errors::PathFlavorError,
     flavors::{Absolute, Any, PathFlavor, Relative},
     internal,

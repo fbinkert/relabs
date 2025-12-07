@@ -11,9 +11,9 @@ use std::{
 use crate::{
     PathBuf,
     errors::PathFlavorError,
-    flavors::{Absolute, Any, PathFlavor, Relative},
+    flavors::{Absolute, Any, PathFlavor, PathJoin, Relative},
     internal,
-    pathbuf::{AbsPathBuf, RelPathBuf},
+    pathbuf::RelPathBuf,
 };
 
 /// Newtype wrapper around `std::path::Path`.
@@ -843,6 +843,28 @@ where
     }
 }
 
+impl<Flavor: PathJoin> Path<Flavor> {
+    /// Creates an owned [`PathBuf`] with `path` adjoined to `self`.
+    ///
+    /// If `path` is absolute, it replaces the current path and creates a new absolute path.
+    ///
+    /// See [`PathBuf::push`] for more details on what it means to adjoin a path.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relabs::{Path, PathBuf};
+    ///
+    /// assert_eq!(Path::new("/etc").join("passwd"), PathBuf::from("/etc/passwd"));
+    /// assert_eq!(Path::new("/etc").join("/bin/sh"), PathBuf::from("/bin/sh"));
+    /// ```
+    #[must_use]
+    #[inline]
+    pub fn join<P: AsRef<Path>>(&self, path: P) -> PathBuf<Flavor::Output> {
+        PathBuf::<Flavor::Output>::new_trusted(self.inner.join(&path.as_ref().inner))
+    }
+}
+
 impl AnyPath {
     /// Directly wraps a string slice as a `Path<Flavor = Any>` slice.
     ///
@@ -902,24 +924,6 @@ impl<Flavor: PathFlavor> AsRef<Path<Flavor>> for Path<Flavor> {
 // Public per-flavor wrappers.
 
 impl Path<Absolute> {
-    /// Joins a relative path onto this absolute path.
-    ///
-    /// The result remains absolute.
-    pub fn join(&self, path: &RelPath) -> AbsPathBuf {
-        internal::join_impl(self, path)
-    }
-
-    /// Tries to join a path-like value onto this absolute path.
-    ///
-    /// This is the fallible counterpart to [`join`]. It first validates that
-    /// `path` is a relative path, and then joins it. The result remains absolute.
-    pub fn try_join<P: AsRef<std::path::Path>>(
-        &self,
-        path: P,
-    ) -> Result<AbsPathBuf, PathFlavorError> {
-        Ok(self.join(RelPath::try_new(&path)?))
-    }
-
     /// Reads a symbolic link, returning the file that the link points to.
     ///
     /// This is an alias to [`fs::read_link`].
@@ -942,19 +946,21 @@ impl Path<Relative> {
     /// Joins a relative path onto this relative path.
     ///
     /// The result remains relative.
-    pub fn join(&self, path: &RelPath) -> RelPathBuf {
-        internal::join_impl(self, path)
+    pub fn join_rel(&self, path: &RelPath) -> RelPathBuf {
+        let joined = RelPathBuf::new_trusted(self.inner.join(path));
+        debug_assert!(Relative::accepts(&joined));
+        joined
     }
 
     /// Tries to join a path-like value onto this relative path.
     ///
     /// This is the fallible counterpart to [`join`]. It first validates that
     /// `path` is a relative path, and then joins it. The result remains relative.
-    pub fn try_join<P: AsRef<std::path::Path>>(
+    pub fn try_join_rel<P: AsRef<std::path::Path>>(
         &self,
         path: P,
     ) -> Result<RelPathBuf, PathFlavorError> {
-        Ok(self.join(RelPath::try_new(&path)?))
+        Ok(self.join_rel(RelPath::try_new(&path)?))
     }
 }
 
