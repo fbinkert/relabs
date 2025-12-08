@@ -38,15 +38,20 @@ impl PathFlavor for Any {
     }
 }
 
-pub trait PathJoin: PathFlavor {
+pub trait StdJoin: PathFlavor {
     type Output: PathFlavor;
 }
-impl PathJoin for Any {
+impl StdJoin for Any {
     type Output = Self;
 }
-impl PathJoin for Relative {
-    type Output = Any;
-}
-impl PathJoin for Absolute {
+impl StdJoin for Relative {
     type Output = Self;
 }
+impl StdJoin for Absolute {
+    type Output = Self;
+}
+
+// Standard push is disallowed for relative
+pub trait StdPush: PathFlavor {}
+impl StdPush for Any {}
+impl StdPush for Absolute {}

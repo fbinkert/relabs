@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     errors::PathFlavorError,
-    flavors::{Absolute, Any, PathFlavor, Relative},
+    flavors::{Absolute, Any, PathFlavor, Relative, StdPush},
     internal,
     path::{Path, RelPath},
 };
@@ -305,20 +305,6 @@ where
         PathBuf::<T>::new_trusted(inner)
     }
 
-    /// Appends a relative path segment to this buffer.
-    #[inline]
-    pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
-        self.inner.push(rhs.as_ref().as_std());
-        debug_assert!(Flavor::accepts(&self.inner));
-    }
-
-    /// Untyped fallible version of [`push`].
-    #[inline]
-    pub fn try_push<P: AsRef<std::path::Path>>(&mut self, rhs: P) -> Result<(), PathFlavorError> {
-        self.push(RelPath::try_new(&rhs)?);
-        Ok(())
-    }
-
     // Borrowed input. Reuses existing allocation. Does not change flavor.
     // Is a clear followed by std's push.
     // Use `replace_with` to change flavor.
@@ -334,6 +320,20 @@ where
     #[inline]
     pub fn try_set<P: AsRef<std::path::Path>>(&mut self, new: P) -> Result<(), PathFlavorError> {
         self.set(Path::<Flavor>::try_new(&new)?);
+        Ok(())
+    }
+
+    /// Appends a relative path segment to this buffer.
+    #[inline]
+    pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
+        self.inner.push(rhs.as_ref().as_std());
+        debug_assert!(Flavor::accepts(&self.inner));
+    }
+
+    /// Untyped fallible version of [`push`].
+    #[inline]
+    pub fn try_push<P: AsRef<std::path::Path>>(&mut self, rhs: P) -> Result<(), PathFlavorError> {
+        self.push(RelPath::try_new(&rhs)?);
         Ok(())
     }
 }
@@ -410,6 +410,14 @@ impl AnyPathBuf {
 impl PathBuf<Relative> {}
 
 impl PathBuf<Absolute> {}
+
+impl<Flavor: StdPush> PathBuf<Flavor> {
+    #[inline]
+    pub fn push_std<P: AsRef<std::path::Path>>(&mut self, rhs: P) {
+        self.inner.push(rhs.as_ref());
+        debug_assert!(Flavor::accepts(&self.inner));
+    }
+}
 
 impl Default for PathBuf {
     fn default() -> Self {

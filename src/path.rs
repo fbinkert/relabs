@@ -9,11 +9,10 @@ use std::{
 };
 
 use crate::{
-    PathBuf,
     errors::PathFlavorError,
-    flavors::{Absolute, Any, PathFlavor, PathJoin, Relative},
+    flavors::{Absolute, Any, PathFlavor, Relative, StdJoin},
     internal,
-    pathbuf::RelPathBuf,
+    pathbuf::PathBuf,
 };
 
 /// Newtype wrapper around `std::path::Path`.
@@ -147,7 +146,7 @@ where
     /// ```
     #[must_use]
     pub fn to_path_buf(&self) -> PathBuf<Flavor> {
-        PathBuf::new_trusted(self.inner.to_path_buf())
+        PathBuf::<Flavor>::new_trusted(self.inner.to_path_buf())
     }
 
     /// Returns `true` if the `Path` is absolute, i.e., if it is independent of
@@ -841,9 +840,29 @@ where
     pub fn into_path_buf(self: Box<Self>) -> PathBuf<Flavor> {
         todo!()
     }
+
+    /// Joins a relative path onto this path.
+    ///
+    /// The result remains invariant.
+    pub fn join<P: AsRef<RelPath>>(&self, path: P) -> PathBuf<Flavor> {
+        let joined_std = self.inner.join(path.as_ref().as_std());
+        debug_assert!(Flavor::accepts(&joined_std));
+        PathBuf::<Flavor>::new_trusted(joined_std)
+    }
+
+    /// Tries to join a path-like value onto this path.
+    ///
+    /// This is the fallible counterpart to [`join`]. It first validates that
+    /// `path` is a relative path, and then joins it. The flavor remains invariant.
+    pub fn try_join<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+    ) -> Result<PathBuf<Flavor>, PathFlavorError> {
+        Ok(self.join(RelPath::try_new(&path)?))
+    }
 }
 
-impl<Flavor: PathJoin> Path<Flavor> {
+impl<Flavor: StdJoin> Path<Flavor> {
     /// Creates an owned [`PathBuf`] with `path` adjoined to `self`.
     ///
     /// If `path` is absolute, it replaces the current path and creates a new absolute path.
@@ -860,7 +879,7 @@ impl<Flavor: PathJoin> Path<Flavor> {
     /// ```
     #[must_use]
     #[inline]
-    pub fn join<P: AsRef<Path>>(&self, path: P) -> PathBuf<Flavor::Output> {
+    pub fn join_std<P: AsRef<Path>>(&self, path: P) -> PathBuf<Flavor::Output> {
         PathBuf::<Flavor::Output>::new_trusted(self.inner.join(&path.as_ref().inner))
     }
 }
@@ -942,27 +961,7 @@ impl Path<Absolute> {
     }
 }
 
-impl Path<Relative> {
-    /// Joins a relative path onto this relative path.
-    ///
-    /// The result remains relative.
-    pub fn join_rel(&self, path: &RelPath) -> RelPathBuf {
-        let joined = RelPathBuf::new_trusted(self.inner.join(path));
-        debug_assert!(Relative::accepts(&joined));
-        joined
-    }
-
-    /// Tries to join a path-like value onto this relative path.
-    ///
-    /// This is the fallible counterpart to [`join`]. It first validates that
-    /// `path` is a relative path, and then joins it. The result remains relative.
-    pub fn try_join_rel<P: AsRef<std::path::Path>>(
-        &self,
-        path: P,
-    ) -> Result<RelPathBuf, PathFlavorError> {
-        Ok(self.join_rel(RelPath::try_new(&path)?))
-    }
-}
+impl Path<Relative> {}
 
 impl<Flavor> fmt::Debug for Path<Flavor>
 where

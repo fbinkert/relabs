@@ -1,49 +1,122 @@
 # RelAbs
 
+[![Crates.io](https://img.shields.io/crates/v/relabs.svg)](https://crates.io/crates/relabs)
+[![Docs.rs](https://docs.rs/relabs/badge.svg)](https://docs.rs/relabs)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-Type-safe zero-cost relative/absolute path wrappers for Rust.
+**Strict, compile-time validation for absolute and relative paths in Rust.**
+
+`RelAbs` lifts the distinction between absolute and relative paths into the type system. It prevents common directory traversal bugs, logic errors, and "stringly typed" confusion by ensuring you never accidentally mix them up.
 
 > ⚠️ **Status: Active Development** This crate is currently in the early stages of development. APIs are subject to change.
 
-## Why
+## Motivation
 
-Standard Rust paths (`std::path::Path`/`PathBuf`) are "stringly typed". A `PathBuf` could be absolute, relative, or nonsense. This forces you to write repetitive runtime checks or rely on implicit assumptions.
+Standard Rust paths (`std::path::Path`/`PathBuf`) are "stringly typed". A value may be absolute, relative, or nonsense. This forces you to rely on repetitive runtime checks or, worse, implicit assumptions.
 
-`RelAbs` moves these checks to the system boundary. By encoding the path type (Absolute vs. Relative) into the type system, we prevent logic errors at compile time.
+`RelAbs` introduces **flavors** to encode invariants in the type system.
 
-## The Problem
+## Flavors: Typed Paths
 
-In standard Rust, joining paths requires implicit knowledge about the data:
+Core types:
+
+- `AbsPath`, `AbsPathBuf` – paths that are guaranteed to be **absolute**.
+- `RelPath`, `RelPathBuf` – paths that are guaranteed to be **relative**.
+- `Path<Any>`, `AnyPathBuf` – unconstrained, analogous to `std::path::Path` / `PathBuf`.
+
+All flavored types are zero-cost wrappers.
+
+### Constructing typed paths
 
 ```rust
-// Standard Library Approach
-fn load_config(base: &Path, rel: &Path) {
-    // Runtime Risk: If 'rel' is absolute, .join() replaces 'base' entirely.
-    // Boilerplate: You must manually check .is_absolute() or hope for the best.
-    if rel.is_absolute() { panic!("Expected relative path!"); }
-    let p = base.join(rel);
-}
+use relabs::{AbsPath, RelPath, AbsPathBuf, RelPathBuf};
+
+// Fallible construction from &str / &Path
+let root: &AbsPath = AbsPath::try_new("/var/www")?;
+let rel : &RelPath = RelPath::try_new("static/app.css")?;
+
+// Owned variants
+let abs_buf = AbsPathBuf::try_from("/etc/passwd")?;
+let rel_buf = RelPathBuf::try_from("src/lib.rs")?;
+
 ```
 
-## The Solution
+If the invariant doesn’t hold (e.g. constructing `AbsPath` from a relative string), construction fails instead of silently accepting it.
 
-With `RelAbs`, the compiler enforces correctness:
+## Typed Composition (`push` / `join`)
+
+For flavored paths, composition is typed:
+
+- `AbsPath` + `RelPath` → `AbsPathBuf`
+- `RelPath` + `RelPath` → `RelPathBuf`
+
+This avoids relying on the overloaded semantics of `PathBuf::push` / `Path::join` (where passing an absolute RHS replaces the base). For **flavored** paths, `push` and `join` are append-only and only accept **relative** components.
+
+```rust
+use relabs::{RelPathBuf, AbsPathBuf, RelPath, AbsPath};
+
+// Relative base
+let mut work_dir = RelPathBuf::try_from("projects/rust").unwrap();
+
+// Typed append: only RelPath is accepted
+work_dir.push(RelPath::try_new("src").unwrap());
+
+// Absolute base
+let root = AbsPath::try_new("/var/www").unwrap();
+
+// join: AbsPath + RelPath -> AbsPathBuf
+let full = root.join(RelPath::try_new("static").unwrap());
+assert_eq!(full.as_path(), AbsPath::try_new("/var/www/static").unwrap());
+
+// These do not compile:
+// work_dir.push(AbsPath::try_new("/etc/passwd").unwrap());
+// root.join(AbsPath::try_new("/etc/passwd").unwrap());
+```
+
+You cannot “accidentally replace the base” just by passing an absolute path. The type system rules it out.
+
+### Escape hatch: typed `push_std`/`join_std`
+
+If you explicitly want the standard library semantics (where an absolute RHS can replace the base), `RelAbs` provides the `push_std` and `join_std` methods.
+These methods are still fully typed and preserve the flavor invariant (`AbsPathBuf` remains absolute, `RelPathBuf` remains relative, etc.).
+
+Example:
+
+```rust
+use relabs::AbsPathBuf;
+
+let mut path = AbsPathBuf::try_from("/var/www")?;
+
+// Std-like semantics: absolute RHS replaces the base,
+// relative RHS is appended, while the result stays `AbsPathBuf`.
+path.push_std("/etc/passwd");
+assert_eq!(path.as_std(), std::path::Path::new("/etc/passwd"));
+```
+
+This keeps the default push / join behavior safe and predictable, while still making it possible to opt into std-like behavior when you really want it.
+
+## Self-Documenting APIs
+
+With flavors, signatures communicate intent.
 
 ```rust
 use relabs::{AbsPath, RelPath};
 
-fn load_config(base: &AbsPath, rel: &RelPath) {
-    // Compile-Time Guarantee: 'base' is absolute, 'rel' is relative.
-    // Zero-Cost: No runtime checks occur here.
-    let p = base.join(rel);
+fn init_workspace(root: &AbsPath, config: &RelPath) {
+    // `root` is guaranteed absolute
+    // `config` is guaranteed relative
 }
 ```
 
+No manual `is_absolute` / `is_relative` checks needed.
+
+## Batteries Included
+
+`RelAbs` is designed to be a drop-in replacement for `std::path::Path` and `PathBuf` at your application's IO boundaries.
+
 ## Key Features
 
-- **Zero-Cost Abstractions:** Uses `#[repr(transparent)]` to guarantee the same memory layout as `std::path::PathBuf`.
-- **Compile-Time Safety:** Trait bounds prevent logical errors, such as joining two absolute paths or appending an absolute path to a relative one.
+- **Zero-Cost:** `RelPath` and `AbsPath` are `#[repr(transparent)]` wrappers around `std::path::Path`. No memory overhead.
 - **Zero Dependencies:** Lightweight implementation relying exclusively on the standard library.
 - **Ecosystem Compatibility:** Designed to interoperate seamlessly with std::fs and std::path.
 
