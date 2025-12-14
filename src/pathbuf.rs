@@ -3,6 +3,7 @@ use std::{
     ffi::{OsStr, OsString},
     fmt,
     marker::PhantomData,
+    ops::Deref,
 };
 
 use crate::{
