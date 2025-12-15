@@ -1,5 +1,5 @@
 use std::{
-    borrow::Borrow,
+    borrow::{Borrow, Cow},
     collections::TryReserveError,
     convert::Infallible,
     ffi::{OsStr, OsString},
@@ -78,6 +78,12 @@ where
     #[inline]
     pub fn into_std(self) -> std::path::PathBuf {
         self.inner
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn as_std_mut(&mut self) -> &mut std::path::PathBuf {
+        &mut self.inner
     }
 
     /// Truncates `self` to [`self.parent`].
@@ -540,6 +546,38 @@ impl FromStr for RelPathBuf {
 // Conversions
 //////////////////////////////////////////////////////////////
 
+impl<'a, Flavor: PathFlavor> From<&'a PathBuf<Flavor>> for Cow<'a, Path<Flavor>> {
+    /// Creates a clone-on-write pointer from a reference to
+    /// [`PathBuf<Flavor>`].
+    ///
+    /// This conversion does not clone or allocate.
+    #[inline]
+    fn from(p: &'a PathBuf<Flavor>) -> Cow<'a, Path<Flavor>> {
+        Cow::Borrowed(p.as_path())
+    }
+}
+
+impl<T: ?Sized + AsRef<RelPath>> From<&T> for RelPathBuf {
+    #[inline]
+    fn from(s: &T) -> Self {
+        Self::new_trusted(s.as_ref().into())
+    }
+}
+
+impl<T: ?Sized + AsRef<AbsPathBuf>> From<&T> for AbsPathBuf {
+    #[inline]
+    fn from(s: &T) -> Self {
+        Self::new_trusted(s.as_ref().into())
+    }
+}
+
+impl<T: ?Sized + AsRef<OsStr>> From<&T> for AnyPathBuf {
+    #[inline]
+    fn from(s: &T) -> Self {
+        Self::new_trusted(s.as_ref().into())
+    }
+}
+
 impl<Flavor> TryFrom<std::path::PathBuf> for PathBuf<Flavor>
 where
     Flavor: PathFlavor,
@@ -555,10 +593,15 @@ where
     }
 }
 
-impl<Flavor> TryFrom<&std::path::Path> for PathBuf<Flavor>
-where
-    Flavor: PathFlavor,
-{
+impl TryFrom<&std::path::Path> for AbsPathBuf {
+    type Error = std::path::PathBuf;
+
+    fn try_from(path: &std::path::Path) -> Result<Self, Self::Error> {
+        Self::try_from(path.to_path_buf())
+    }
+}
+
+impl TryFrom<&std::path::Path> for RelPathBuf {
     type Error = std::path::PathBuf;
 
     fn try_from(path: &std::path::Path) -> Result<Self, Self::Error> {
@@ -581,12 +624,6 @@ impl TryFrom<&str> for RelPathBuf {
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
         Self::try_from(std::path::PathBuf::from(s))
-    }
-}
-
-impl From<&str> for AnyPathBuf {
-    fn from(value: &str) -> Self {
-        Self::new_trusted(std::path::PathBuf::from(value))
     }
 }
 

@@ -1027,3 +1027,17 @@ impl<'a, Flavor: PathFlavor + 'a> Iterator for Ancestors<'a, Flavor> {
 }
 
 impl<'a, Flavor: PathFlavor + 'a> FusedIterator for Ancestors<'a, Flavor> {}
+
+impl<Flavor: PathFlavor> ToOwned for Path<Flavor> {
+    type Owned = PathBuf<Flavor>;
+
+    #[inline]
+    fn to_owned(&self) -> Self::Owned {
+        self.to_path_buf()
+    }
+
+    #[inline]
+    fn clone_into(&self, target: &mut PathBuf<Flavor>) {
+        self.inner.clone_into(target.as_std_mut())
+    }
+}
