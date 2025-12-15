@@ -1,9 +1,11 @@
 use std::{
+    borrow::Borrow,
     collections::TryReserveError,
     ffi::{OsStr, OsString},
     fmt,
+    hash::{Hash, Hasher},
     marker::PhantomData,
-    ops::Deref,
+    ops::{Deref, DerefMut},
 };
 
 use crate::{
@@ -294,14 +296,14 @@ where
     // Flavor-changing: consumes self and reuses its buffer (can reuse capacity).
     // Same as `set` but with changes flavor.
     #[inline]
-    pub fn replace_with<T, P>(self, rhs: P) -> PathBuf<T>
+    pub fn replace_with<T, P>(self, path: P) -> PathBuf<T>
     where
         T: PathFlavor,
         P: AsRef<Path<T>>,
     {
         let mut inner = self.into_std();
         inner.clear();
-        inner.push(rhs.as_ref().as_std());
+        inner.push(path.as_ref().as_std());
         debug_assert!(T::accepts(&inner));
         PathBuf::<T>::new_trusted(inner)
     }
@@ -420,12 +422,88 @@ impl<Flavor: StdPush> PathBuf<Flavor> {
     }
 }
 
-impl Default for PathBuf {
+//////////////////////////////////////////////////////////////
+// Trait implementations
+//////////////////////////////////////////////////////////////
+
+impl Default for AnyPathBuf {
     fn default() -> Self {
         Self {
             _flavor: PhantomData,
             inner: std::path::PathBuf::default(),
         }
+    }
+}
+
+impl<Flavor: PathFlavor> Deref for PathBuf<Flavor> {
+    type Target = Path<Flavor>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.as_path()
+    }
+}
+
+impl<Flavor: PathFlavor> DerefMut for PathBuf<Flavor> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Path<Flavor> {
+        internal::convert_mut(&mut self.inner)
+    }
+}
+
+impl<Flavor: PathFlavor> Clone for PathBuf<Flavor> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self {
+            _flavor: PhantomData,
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// Clones the contents of `source` into `self`.
+    ///
+    /// This method is preferred over simply assigning `source.clone()` to `self`,
+    /// as it avoids reallocation if possible.
+    #[inline]
+    fn clone_from(&mut self, source: &Self) {
+        self.inner.clone_from(&source.inner)
+    }
+}
+
+impl<P, Flavor> Extend<P> for PathBuf<Flavor>
+where
+    Flavor: PathFlavor,
+    P: AsRef<RelPath>,
+{
+    /// Extends `self` with [`RelPath`] elements from `iter`.
+    ///
+    /// This uses [`push`](Self::push) to add each element, so can be used to adjoin multiple path
+    /// [components](Components).
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::path::PathBuf;
+    /// let mut abs_path = AbsPathBuf::try_from("/tmp").unwrap();
+    /// abs_path.extend(["foo", "bar", "file.txt"]);
+    /// assert_eq!(path, AbsPathBuf::try_from("/tmp/foo/bar/file.txt").unwrap());
+    /// ```
+    ///
+    /// See documentation for [`push`](Self::push) for more details on how the path is constructed.
+    fn extend<T: IntoIterator<Item = P>>(&mut self, iter: T) {
+        iter.into_iter().for_each(move |p| self.push(p.as_ref()));
+    }
+}
+
+impl<Flavor: PathFlavor> Borrow<Path<Flavor>> for PathBuf<Flavor> {
+    #[inline]
+    fn borrow(&self) -> &Path<Flavor> {
+        self.deref()
+    }
+}
+
+impl<Flavor: PathFlavor> Hash for PathBuf<Flavor> {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        self.inner.hash(h)
     }
 }
 
@@ -547,5 +625,24 @@ impl<Flavor: PathFlavor> PartialEq<Path<Flavor>> for PathBuf<Flavor> {
 impl<Flavor: PathFlavor> PartialEq<&Path<Flavor>> for PathBuf<Flavor> {
     fn eq(&self, other: &&Path<Flavor>) -> bool {
         self.as_path() == *other
+    }
+}
+
+impl<Flavor: PathFlavor, P: AsRef<Path<Relative>>> FromIterator<P> for PathBuf<Flavor> {
+    fn from_iter<T: IntoIterator<Item = P>>(iter: T) -> Self {
+        let mut buf = Self::new_trusted(std::path::PathBuf::new());
+        buf.extend(iter);
+        buf
+    }
+}
+
+impl<'a, Flavor: PathFlavor> IntoIterator for &'a PathBuf<Flavor> {
+    type Item = &'a OsStr;
+
+    type IntoIter = std::path::Iter<'a>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
