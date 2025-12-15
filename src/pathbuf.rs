@@ -1,11 +1,13 @@
 use std::{
     borrow::Borrow,
     collections::TryReserveError,
+    convert::Infallible,
     ffi::{OsStr, OsString},
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
     ops::{Deref, DerefMut},
+    str::FromStr,
 };
 
 use crate::{
@@ -504,6 +506,33 @@ impl<Flavor: PathFlavor> Borrow<Path<Flavor>> for PathBuf<Flavor> {
 impl<Flavor: PathFlavor> Hash for PathBuf<Flavor> {
     fn hash<H: Hasher>(&self, h: &mut H) {
         self.inner.hash(h)
+    }
+}
+
+impl FromStr for AnyPathBuf {
+    type Err = Infallible;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(s.into())
+    }
+}
+
+impl FromStr for AbsPathBuf {
+    type Err = std::path::PathBuf;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.try_into()
+    }
+}
+
+impl FromStr for RelPathBuf {
+    type Err = std::path::PathBuf;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.try_into()
     }
 }
 
