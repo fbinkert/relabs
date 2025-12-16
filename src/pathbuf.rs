@@ -7,7 +7,9 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
     ops::{Deref, DerefMut},
+    rc::Rc,
     str::FromStr,
+    sync::Arc,
 };
 
 use crate::{
@@ -575,6 +577,89 @@ impl<T: ?Sized + AsRef<OsStr>> From<&T> for AnyPathBuf {
     #[inline]
     fn from(s: &T) -> Self {
         Self::new_trusted(s.as_ref().into())
+    }
+}
+
+impl<Flavor: PathFlavor> From<Box<Path<Flavor>>> for PathBuf<Flavor> {
+    /// Converts `Box<Path<Flavor>>` into a [`PathBuf<Flavor>`].
+    ///
+    /// This conversion does not allocate or copy memory.
+    #[inline]
+    fn from(boxed: Box<Path<Flavor>>) -> Self {
+        boxed.into_path_buf()
+    }
+}
+
+impl<'a, Flavor: PathFlavor> From<Cow<'a, Path<Flavor>>> for PathBuf<Flavor> {
+    /// Converts a clone-on-write pointer to an owned path.
+    ///
+    /// Converting from a `Cow::Owned` does not clone or allocate.
+    #[inline]
+    fn from(p: Cow<'a, Path<Flavor>>) -> Self {
+        p.into_owned()
+    }
+}
+
+impl<Flavor: PathFlavor> From<OsString> for PathBuf<Flavor> {
+    /// Converts an [`OsString`] into a [`PathBuf`].
+    ///
+    /// This conversion does not allocate or copy memory.
+    #[inline]
+    fn from(s: OsString) -> Self {
+        Self {
+            _flavor: PhantomData,
+            inner: s.into(),
+        }
+    }
+}
+
+impl<Flavor: PathFlavor> From<PathBuf<Flavor>> for Arc<Path<Flavor>> {
+    /// Converts a [`PathBuf<Flavor>`] into an [`Arc`]`<`[`Path<Flavor>`]`>` by moving the
+    /// [`PathBuf<Flavor>`] data into a new [`Arc`] buffer.
+    #[inline]
+    fn from(s: PathBuf<Flavor>) -> Arc<Path<Flavor>> {
+        Arc::from(s.into_boxed_path())
+    }
+}
+
+impl<Flavor: PathFlavor> From<PathBuf<Flavor>> for Box<Path<Flavor>> {
+    /// Converts a [`PathBuf<Flavor>`] into a [`Box`]`<`[`Path<Flavor>`]`>`.
+    ///
+    /// This conversion currently should not allocate memory,
+    /// but this behavior is not guaranteed on all platforms or in all future versions.
+    #[inline]
+    fn from(p: PathBuf<Flavor>) -> Box<Path<Flavor>> {
+        p.into_boxed_path()
+    }
+}
+
+impl<'a, Flavor: PathFlavor> From<PathBuf<Flavor>> for Cow<'a, Path<Flavor>> {
+    /// Creates a clone-on-write pointer from an owned
+    /// instance of [`PathBuf<Flavor>`].
+    ///
+    /// This conversion does not clone or allocate.
+    #[inline]
+    fn from(s: PathBuf<Flavor>) -> Cow<'a, Path<Flavor>> {
+        Cow::Owned(s)
+    }
+}
+
+impl<Flavor: PathFlavor> From<PathBuf<Flavor>> for OsString {
+    /// Converts a [`PathBuf<Flavor>`] into an [`OsString`]
+    ///
+    /// This conversion does not allocate or copy memory.
+    #[inline]
+    fn from(path_buf: PathBuf<Flavor>) -> OsString {
+        path_buf.inner.into_os_string()
+    }
+}
+
+impl<Flavor: PathFlavor> From<PathBuf<Flavor>> for Rc<Path<Flavor>> {
+    /// Converts a [`PathBuf<Flavor>`] into an [`Rc`]`<`[`Path<Flavor>`]`>` by moving the
+    /// [`PathBuf<Flavor>`] data into a new [`Rc`] buffer.
+    #[inline]
+    fn from(s: PathBuf<Flavor>) -> Rc<Path<Flavor>> {
+        Rc::from(s.into_boxed_path())
     }
 }
 
