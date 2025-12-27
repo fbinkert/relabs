@@ -16,7 +16,7 @@ use crate::{
     AnyPath,
     errors::PathFlavorError,
     flavors::{Absolute, Any, PathFlavor, Relative, StdPush},
-    internal,
+    internal::{self, convert_mut},
     path::{Path, RelPath},
 };
 
@@ -461,15 +461,44 @@ impl AnyPathBuf {
     }
 
     /// Invokes [`clear`] on the underlying instance of [`OsString`].
+    /// Truncates the `OsString` to zero length.
     ///
     /// [`clear`]: OsString::clear
     #[inline]
     pub fn clear(&mut self) {
-        self.inner.clear()
+        self.inner.clear();
+    }
+
+    /// Consumes and leaks the `AnyPathBuf`, returning a mutable reference to the contents,
+    /// `&'a mut AnyPath`.
+    ///
+    /// The caller has free choice over the returned lifetime, including 'static.
+    /// Indeed, this function is ideally used for data that lives for the remainder of
+    /// the program's life, as dropping the returned reference will cause a memory leak.
+    ///
+    /// It does not reallocate or shrink the `PathBuf`, so the leaked allocation may include
+    /// unused capacity that is not part of the returned slice. If you want to discard excess
+    /// capacity, call [`into_boxed_path`], and then [`Box::leak`] instead.
+    /// However, keep in mind that trimming the capacity may result in a reallocation and copy.
+    ///
+    /// [`into_boxed_path`]: Self::into_boxed_path
+    #[inline]
+    pub fn leak<'a>(self) -> &'a mut AnyPath {
+        convert_mut(self.inner.leak())
     }
 }
 
-impl PathBuf<Relative> {}
+impl PathBuf<Relative> {
+    /// Invokes [`clear`] on the underlying instance of [`OsString`].
+    /// Truncates the `OsString` to zero length.
+    ///
+    /// [`clear`]: OsString::clear
+    #[inline]
+    pub fn clear(&mut self) {
+        self.inner.clear();
+        debug_assert!(Relative::accepts(&self.inner));
+    }
+}
 
 impl PathBuf<Absolute> {}
 
