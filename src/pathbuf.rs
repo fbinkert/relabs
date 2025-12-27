@@ -489,6 +489,22 @@ impl AnyPathBuf {
 }
 
 impl PathBuf<Relative> {
+    /// Allocates an empty [`RelPathBuf`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relabs::RelPathBuf;
+    ///
+    /// let path = RelPathBuf::new();
+    /// ```
+    #[inline]
+    pub fn new() -> Self {
+        let new = Self::new_trusted(std::path::PathBuf::new());
+        debug_assert!(Relative::accepts(&new.inner));
+        new
+    }
+
     /// Invokes [`clear`] on the underlying instance of [`OsString`].
     /// Truncates the `OsString` to zero length.
     ///
