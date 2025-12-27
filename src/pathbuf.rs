@@ -408,9 +408,9 @@ impl AnyPathBuf {
     /// # Examples
     ///
     /// ```
-    /// use relabs::PathBuf;
+    /// use relabs::AnyPathBuf;
     ///
-    /// let path = PathBuf::new();
+    /// let path = AnyPathBuf::new();
     /// ```
     #[inline]
     pub fn new() -> Self {
@@ -485,6 +485,36 @@ impl AnyPathBuf {
     #[inline]
     pub fn leak<'a>(self) -> &'a mut AnyPath {
         convert_mut(self.inner.leak())
+    }
+
+    /// Consumes a [`AnyPathBuf`], returning an `Ok` [`AbsPathBuf`] if the [`AnyPathBuf`]
+    /// is absolute. Otherwise, returns the original [`AnyPathBuf`] as an `Err`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relabs::AnyPathBuf;
+    ///
+    /// assert!(AnyPathBuf::from("test.txt").try_into_absolute().is_err());
+    /// ```
+    #[inline]
+    pub fn try_into_absolute(self) -> Result<AbsPathBuf, Self> {
+        AbsPathBuf::try_from(self)
+    }
+
+    /// Consumes a [`AnyPathBuf`], returning an `Ok` [`RelPathBuf`] if the [`AnyPathBuf`]
+    /// is absolute. Otherwise, returns the original [`AnyPathBuf`] as an `Err`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relabs::AnyPathBuf;
+    ///
+    /// assert!(AnyPathBuf::from("test.txt").try_into_absolute().is_err());
+    /// ```
+    #[inline]
+    pub fn try_into_relative(self) -> Result<RelPathBuf, Self> {
+        RelPathBuf::try_from(self)
     }
 }
 
@@ -794,6 +824,30 @@ impl TryFrom<&str> for AbsPathBuf {
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
         Self::try_from(std::path::PathBuf::from(s))
+    }
+}
+
+impl TryFrom<AnyPathBuf> for AbsPathBuf {
+    type Error = AnyPathBuf;
+
+    fn try_from(path: AnyPathBuf) -> Result<Self, Self::Error> {
+        if Absolute::accepts(&path) {
+            Ok(Self::new_trusted(path.inner))
+        } else {
+            Err(path)
+        }
+    }
+}
+
+impl TryFrom<AnyPathBuf> for RelPathBuf {
+    type Error = AnyPathBuf;
+
+    fn try_from(path: AnyPathBuf) -> Result<Self, Self::Error> {
+        if Relative::accepts(&path) {
+            Ok(Self::new_trusted(path.inner))
+        } else {
+            Err(path)
+        }
     }
 }
 
