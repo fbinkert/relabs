@@ -61,12 +61,12 @@ Validation happens at construction. Since `RelAbs` wraps `std::path`, validation
 use relabs::{AbsPath, RelPath, AbsPathBuf, RelPathBuf};
 
 // Fallible construction from &str / &Path
-let root: &AbsPath = AbsPath::try_new("/var/www")?;
-let rel : &RelPath = RelPath::try_new("static/app.css")?;
+let root: &AbsPath = AbsPath::try_new("/var/www").unwrap();
+let rel : &RelPath = RelPath::try_new("static/app.css").unwrap();
 
 // Owned variants
-let abs_buf = AbsPathBuf::try_from("/etc/passwd")?;
-let rel_buf = RelPathBuf::try_from("src/lib.rs")?;
+let abs_buf = AbsPathBuf::try_from("/etc/passwd").unwrap();
+let rel_buf = RelPathBuf::try_from("src/lib.rs").unwrap();
 ```
 
 If the invariant doesn’t hold (e.g., constructing `AbsPath` from a relative string), construction fails instead of silently accepting it.
