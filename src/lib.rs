@@ -8,5 +8,5 @@ pub mod pathbuf;
 #[doc(hidden)]
 pub(crate) mod internal;
 
-pub use path::{AbsPath, AnyPath, RelPath};
-pub use pathbuf::{AbsPathBuf, AnyPathBuf, RelPathBuf};
+pub use path::{AbsPath, AnyPath, Path, RelPath};
+pub use pathbuf::{AbsPathBuf, AnyPathBuf, PathBuf, RelPathBuf};

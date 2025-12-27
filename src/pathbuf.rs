@@ -13,6 +13,7 @@ use std::{
 };
 
 use crate::{
+    AnyPath,
     errors::PathFlavorError,
     flavors::{Absolute, Any, PathFlavor, Relative, StdPush},
     internal,
@@ -222,6 +223,54 @@ where
         self.inner.set_extension(extension)
     }
 
+    /// Append [`self.extension`] with `extension`.
+    ///
+    /// Returns `false` and does nothing if [`self.file_name`] is [`None`],
+    /// returns `true` and updates the extension otherwise.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the passed extension contains a path separator (see
+    /// [`is_separator`]).
+    ///
+    /// # Caveats
+    ///
+    /// The appended `extension` may contain dots and will be used in its entirety,
+    /// but only the part after the final dot will be reflected in
+    /// [`self.extension`].
+    ///
+    /// See the examples below.
+    ///
+    /// [`self.file_name`]: Path::file_name
+    /// [`self.extension`]: Path::extension
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relabs::{AbsPath, AbsPathBuf};
+    ///
+    ///
+    /// let mut p = AbsPathBuf::try_from("/feel/the").unwrap();
+    ///
+    /// p.add_extension("formatted");
+    /// assert_eq!(AbsPath::try_new("/feel/the.formatted").unwrap(), p.as_path());
+    ///
+    /// p.add_extension("dark.side");
+    /// assert_eq!(AbsPath::try_new("/feel/the.formatted.dark.side").unwrap(), p.as_path());
+    ///
+    /// p.set_extension("cookie");
+    /// assert_eq!(AbsPath::try_new("/feel/the.formatted.dark.cookie").unwrap(), p.as_path());
+    ///
+    /// p.set_extension("");
+    /// assert_eq!(AbsPath::try_new("/feel/the.formatted.dark").unwrap(), p.as_path());
+    ///
+    /// p.add_extension("");
+    /// assert_eq!(AbsPath::try_new("/feel/the.formatted.dark").unwrap(), p.as_path());
+    /// ```
+    pub fn add_extension<S: AsRef<OsStr>>(&mut self, extension: S) -> bool {
+        self.inner.add_extension(extension)
+    }
+
     /// Consumes the `PathBuf`, yielding its internal [`OsString`] storage.
     ///
     /// # Examples
@@ -326,7 +375,7 @@ where
         let p = new.as_ref().as_std();
         self.inner.clear();
         self.inner.push(p);
-        debug_assert!(Absolute::accepts(&self.inner));
+        debug_assert!(Flavor::accepts(&self.inner));
     }
 
     /// Untyped fallible version of [`set`].
@@ -374,7 +423,7 @@ impl AnyPathBuf {
     /// # Examples
     ///
     /// ```
-    /// use relabs::AnyPathBuf;
+    /// use relabs::{AnyPathBuf, AnyPath};
     ///
     /// let mut any_path = AnyPathBuf::with_capacity(10);
     /// let capacity = any_path.capacity();
@@ -492,10 +541,10 @@ where
     ///
     /// # Examples
     /// ```
-    /// # use std::path::PathBuf;
+    /// # use relabs::{AbsPathBuf, RelPath};
     /// let mut abs_path = AbsPathBuf::try_from("/tmp").unwrap();
-    /// abs_path.extend(["foo", "bar", "file.txt"]);
-    /// assert_eq!(path, AbsPathBuf::try_from("/tmp/foo/bar/file.txt").unwrap());
+    /// abs_path.extend([RelPath::try_new("foo").unwrap(), RelPath::try_new("bar").unwrap(), RelPath::try_new("file.txt").unwrap()]);
+    /// assert_eq!(abs_path, AbsPathBuf::try_from("/tmp/foo/bar/file.txt").unwrap());
     /// ```
     ///
     /// See documentation for [`push`](Self::push) for more details on how the path is constructed.
