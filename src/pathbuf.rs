@@ -935,6 +935,20 @@ impl TryFrom<String> for RelPathBuf {
     }
 }
 
+impl TryFrom<AnyPathBuf> for RelPathBuf {
+    type Error = AnyPathBuf;
+    fn try_from(path: AnyPathBuf) -> Result<Self, Self::Error> {
+        RelPathBuf::try_from(path.inner).map_err(AnyPathBuf::new_trusted)
+    }
+}
+
+impl TryFrom<AnyPathBuf> for AbsPathBuf {
+    type Error = AnyPathBuf;
+    fn try_from(path: AnyPathBuf) -> Result<Self, Self::Error> {
+        AbsPathBuf::try_from(path.inner).map_err(AnyPathBuf::new_trusted)
+    }
+}
+
 impl From<String> for AnyPathBuf {
     fn from(value: String) -> Self {
         Self::new_trusted(std::path::PathBuf::from(value))
