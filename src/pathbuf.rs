@@ -83,9 +83,8 @@ where
         self.inner
     }
 
-    #[must_use]
     #[inline]
-    pub fn as_std_mut(&mut self) -> &mut std::path::PathBuf {
+    pub(crate) fn unsafe_inner_mut(&mut self) -> &mut std::path::PathBuf {
         &mut self.inner
     }
 
@@ -515,6 +514,12 @@ impl AnyPathBuf {
     #[inline]
     pub fn try_into_relative(self) -> Result<RelPathBuf, Self> {
         RelPathBuf::try_from(self)
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn as_std_mut(&mut self) -> &mut std::path::PathBuf {
+        &mut self.inner
     }
 }
 

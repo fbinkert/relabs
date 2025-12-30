@@ -1042,6 +1042,6 @@ impl<Flavor: PathFlavor> ToOwned for Path<Flavor> {
 
     #[inline]
     fn clone_into(&self, target: &mut PathBuf<Flavor>) {
-        self.inner.clone_into(target.as_std_mut())
+        self.inner.clone_into(target.unsafe_inner_mut())
     }
 }
