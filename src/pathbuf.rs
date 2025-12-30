@@ -1023,6 +1023,32 @@ where
     }
 }
 
+macro_rules! impl_eq_utf8 {
+    ($($Type:ty),+) => {
+        $(
+            impl<Flavor: PathFlavor> PartialEq<$Type> for PathBuf<Flavor> {
+                #[inline]
+                fn eq(&self, other: &$Type) -> bool {
+                    self.inner.as_path() == std::path::Path::new(other)
+                }
+            }
+
+            impl<Flavor: PathFlavor> PartialEq<PathBuf<Flavor>> for $Type {
+                #[inline]
+                fn eq(&self, other: &PathBuf<Flavor>) -> bool {
+                    std::path::Path::new(self) == other.inner.as_path()
+                }
+            }
+        )+
+    };
+}
+
+impl_eq_utf8! {
+    str,
+    &str,
+    String
+}
+
 impl<P> FromIterator<P> for RelPathBuf
 where
     P: AsRef<RelPath>,
