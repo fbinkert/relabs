@@ -980,9 +980,13 @@ impl<Flavor: PathFlavor> PartialEq for Path<Flavor> {
 
 impl<Flavor: PathFlavor> Eq for Path<Flavor> {}
 
-impl<Flavor: PathFlavor> PartialEq<PathBuf<Flavor>> for Path<Flavor> {
-    fn eq(&self, other: &PathBuf<Flavor>) -> bool {
-        self == other.as_path()
+impl<L, R> PartialEq<PathBuf<R>> for Path<L>
+where
+    L: PathFlavor,
+    R: PathFlavor,
+{
+    fn eq(&self, other: &PathBuf<R>) -> bool {
+        self.as_std() == other.as_std()
     }
 }
 

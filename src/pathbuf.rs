@@ -276,9 +276,9 @@ where
     /// # Examples
     ///
     /// ```
-    /// use relabs::PathBuf;
+    /// use relabs::AbsPathBuf;
     ///
-    /// let p = PathBuf::from("/the/head");
+    /// let p = AbsPathBuf::try_from("/the/head").unwrap();
     /// let os_str = p.into_os_string();
     /// ```
     #[must_use]
@@ -609,22 +609,82 @@ where
     Flavor: PathFlavor,
     P: AsRef<RelPath>,
 {
-    /// Extends `self` with [`RelPath`] elements from `iter`.
+    /// Extends `self` with trusted [`RelPath`] elements from `iter`.
     ///
-    /// This uses [`push`](Self::push) to add each element, so can be used to adjoin multiple path
-    /// [components](Components).
+    /// This implementation requires inputs to be strictly typed as `AsRef<RelPath>`,
+    /// ensuring at compile time that only valid relative paths are appended.
+    ///
+    /// To extend using untrusted types (like `&str`), use [`try_extend`](Self::try_extend) instead.
     ///
     /// # Examples
-    /// ```
-    /// # use relabs::{AbsPathBuf, RelPath};
-    /// let mut abs_path = AbsPathBuf::try_from("/tmp").unwrap();
-    /// abs_path.extend([RelPath::try_new("foo").unwrap(), RelPath::try_new("bar").unwrap(), RelPath::try_new("file.txt").unwrap()]);
-    /// assert_eq!(abs_path, AbsPathBuf::try_from("/tmp/foo/bar/file.txt").unwrap());
-    /// ```
     ///
-    /// See documentation for [`push`](Self::push) for more details on how the path is constructed.
+    /// ```
+    /// use relabs::{AbsPathBuf, PathBuf, RelPath};
+    ///
+    /// let mut abs_path = AbsPathBuf::try_from("/tmp").unwrap();
+    ///
+    /// // Inputs must be strictly typed relative paths
+    /// let components = ["foo", "bar", "file.txt"]
+    ///     .map(|s| RelPath::try_new(s).unwrap());
+    ///
+    /// abs_path.extend(components);
+    ///
+    /// assert_eq!(abs_path, PathBuf::from("/tmp/foo/bar/file.txt"));
+    /// ```
     fn extend<T: IntoIterator<Item = P>>(&mut self, iter: T) {
         iter.into_iter().for_each(move |p| self.push(p.as_ref()));
+    }
+}
+
+impl<Flavor: PathFlavor> PathBuf<Flavor> {
+    /// Extends `self` with path elements from `iter`, verifying at runtime that they are relative.
+    ///
+    /// Unlike [`Extend::extend`], this method accepts untrusted standard types (like `&str`,
+    /// `String`, or `std::path::Path`) and validates that each component is a relative path.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`PathFlavorError`](crate::errors::PathFlavorError) if any element in `iter` is an absolute path.
+    ///
+    /// If an error occurs, the function returns immediately. **Note:** The buffer `self`
+    /// will remain modified with any components that were successfully pushed *before*
+    /// the error occurred.
+    ///
+    /// # Examples
+    ///
+    /// Successful extension using strings:
+    ///
+    /// ```
+    /// use relabs::{AbsPathBuf, PathBuf};
+    ///
+    /// let mut abs_path = AbsPathBuf::try_from("/tmp").unwrap();
+    ///
+    /// // Safe to use raw strings here because they are checked at runtime
+    /// abs_path.try_extend(["foo", "bar", "file.txt"]).unwrap();
+    ///
+    /// assert_eq!(abs_path, PathBuf::from("/tmp/foo/bar/file.txt"));
+    /// ```
+    ///
+    /// Fails if an absolute path is encountered:
+    ///
+    /// ```
+    /// use relabs::AbsPathBuf;
+    ///
+    /// let mut abs_path = AbsPathBuf::try_from("/tmp").unwrap();
+    ///
+    /// // The component "/bar" is absolute, so this returns an error
+    /// assert!(abs_path.try_extend(["foo", "/bar"]).is_err());
+    /// ```
+    pub fn try_extend<I, P>(&mut self, iter: I) -> Result<(), crate::errors::PathFlavorError>
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<std::path::Path>,
+    {
+        for p in iter {
+            let rel_segment = RelPath::try_new(p.as_ref())?;
+            self.inner.push(rel_segment.as_std());
+        }
+        Ok(())
     }
 }
 
@@ -822,31 +882,24 @@ impl TryFrom<&str> for AbsPathBuf {
     type Error = std::path::PathBuf;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
-        Self::try_from(std::path::PathBuf::from(s))
-    }
-}
-
-impl TryFrom<AnyPathBuf> for AbsPathBuf {
-    type Error = AnyPathBuf;
-
-    fn try_from(path: AnyPathBuf) -> Result<Self, Self::Error> {
-        if Absolute::accepts(&path) {
-            Ok(Self::new_trusted(path.inner))
+        let path = std::path::Path::new(s);
+        if Absolute::accepts(path) {
+            Ok(Self::new_trusted(path.to_path_buf()))
         } else {
-            Err(path)
+            Err(path.to_path_buf())
         }
     }
 }
 
-impl TryFrom<AnyPathBuf> for RelPathBuf {
-    type Error = AnyPathBuf;
+impl TryFrom<String> for AbsPathBuf {
+    type Error = std::path::PathBuf;
 
-    fn try_from(path: AnyPathBuf) -> Result<Self, Self::Error> {
-        if Relative::accepts(&path) {
-            Ok(Self::new_trusted(path.inner))
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        let inner = std::path::PathBuf::from(s);
+        if <Absolute as PathFlavor>::accepts(&inner) {
+            Ok(Self::new_trusted(inner))
         } else {
-            Err(path)
+            Err(inner)
         }
     }
 }
@@ -855,17 +908,12 @@ impl TryFrom<&str> for RelPathBuf {
     type Error = std::path::PathBuf;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
-        Self::try_from(std::path::PathBuf::from(s))
-    }
-}
-
-impl TryFrom<String> for AbsPathBuf {
-    type Error = std::path::PathBuf;
-
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
-        Self::try_from(std::path::PathBuf::from(s))
+        let path = std::path::Path::new(s);
+        if <Relative as PathFlavor>::accepts(path) {
+            Ok(Self::new_trusted(path.to_path_buf()))
+        } else {
+            Err(path.to_path_buf())
+        }
     }
 }
 
@@ -873,8 +921,12 @@ impl TryFrom<String> for RelPathBuf {
     type Error = std::path::PathBuf;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
-        // TODO: We should probably just use `relabs::PathBuf::from(s)` directly.
-        Self::try_from(std::path::PathBuf::from(s))
+        let inner = std::path::PathBuf::from(s);
+        if <Relative as PathFlavor>::accepts(&inner) {
+            Ok(Self::new_trusted(inner))
+        } else {
+            Err(inner)
+        }
     }
 }
 
@@ -907,33 +959,97 @@ where
     }
 }
 
-impl<Flavor: PathFlavor> PartialEq for PathBuf<Flavor> {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_path() == other.as_path()
+//////////////////////////////////////////////////////////////
+// Comparisons
+//////////////////////////////////////////////////////////////
+
+impl<L, R> PartialEq<PathBuf<R>> for PathBuf<L>
+where
+    L: PathFlavor,
+    R: PathFlavor,
+{
+    fn eq(&self, other: &PathBuf<R>) -> bool {
+        self.inner == other.inner
     }
 }
 
 impl<Flavor: PathFlavor> Eq for PathBuf<Flavor> {}
 
-impl<Flavor: PathFlavor> PartialEq<Path<Flavor>> for PathBuf<Flavor> {
-    fn eq(&self, other: &Path<Flavor>) -> bool {
-        self.as_path() == other
+impl<L, R> PartialEq<Path<R>> for PathBuf<L>
+where
+    L: PathFlavor,
+    R: PathFlavor,
+{
+    fn eq(&self, other: &Path<R>) -> bool {
+        self.inner.as_path() == other.as_std()
     }
 }
 
-impl<Flavor: PathFlavor> PartialEq<&Path<Flavor>> for PathBuf<Flavor> {
-    fn eq(&self, other: &&Path<Flavor>) -> bool {
-        self.as_path() == *other
+impl<L, R> PartialEq<&Path<R>> for PathBuf<L>
+where
+    L: PathFlavor,
+    R: PathFlavor,
+{
+    fn eq(&self, other: &&Path<R>) -> bool {
+        self.inner.as_path() == other.as_std()
     }
 }
 
-impl<Flavor: PathFlavor, P: AsRef<Path<Relative>>> FromIterator<P> for PathBuf<Flavor> {
+impl<P> FromIterator<P> for RelPathBuf
+where
+    P: AsRef<RelPath>,
+{
+    /// Constructs a [`RelPathBuf`] from trusted relative path components.
+    ///
+    /// Because the input types are strictly bound to `AsRef<RelPath>`, we guarantee
+    /// at compile time that the resulting path is relative. No runtime checks or
+    /// panics are required.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use relabs::{RelPathBuf, RelPath, PathBuf};
+    ///
+    /// // Inputs must be strictly typed `RelPath`s.
+    /// // (If you have raw strings, use `try_new` first or use `try_extend`).
+    /// let parts = [
+    ///     RelPath::try_new("src").unwrap(),
+    ///     RelPath::try_new("main.rs").unwrap(),
+    /// ];
+    ///
+    /// let path: RelPathBuf = parts.into_iter().collect();
+    /// assert_eq!(path, PathBuf::from("src/main.rs"));
+    /// ```
     fn from_iter<T: IntoIterator<Item = P>>(iter: T) -> Self {
-        let mut buf = Self::new_trusted(std::path::PathBuf::new());
-        buf.extend(iter);
-        buf
+        let mut inner = std::path::PathBuf::new();
+        // Since we only accept RelPath, we know 'inner' will never become Absolute.
+        iter.into_iter()
+            .for_each(|p| inner.push(p.as_ref().as_std()));
+        Self::new_trusted(inner)
     }
 }
+
+impl<P> FromIterator<P> for AnyPathBuf
+where
+    P: AsRef<std::path::Path>,
+{
+    /// Constructs an [`AnyPathBuf`] from any path components.
+    fn from_iter<T: IntoIterator<Item = P>>(iter: T) -> Self {
+        let mut inner = std::path::PathBuf::new();
+        inner.extend(iter);
+        Self::new_trusted(inner)
+    }
+}
+
+// We intentionally DO NOT implement FromIterator for AbsPathBuf.
+//
+// Reason: `collect()` assumes valid output from homogenous inputs.
+// - If inputs are Relative: Result is Relative (Invalid AbsPathBuf).
+// - If inputs are Absolute: Result is valid, but this is a rare edge case.
+//
+// To build an AbsPathBuf, users should start with a valid root and extend:
+// `let p = AbsPathBuf::try_from("/usr").unwrap();`
+// `p.extend(relative_parts);`
 
 impl<'a, Flavor: PathFlavor> IntoIterator for &'a PathBuf<Flavor> {
     type Item = &'a OsStr;
