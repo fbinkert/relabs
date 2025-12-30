@@ -397,6 +397,24 @@ where
         self.push(RelPath::try_new(&rhs)?);
         Ok(())
     }
+
+    /// Consumes and leaks the `PathBuf<Flavor>`, returning a mutable reference to the contents,
+    /// `&'a mut Path<Flavor>`.
+    ///
+    /// The caller has free choice over the returned lifetime, including 'static.
+    /// Indeed, this function is ideally used for data that lives for the remainder of
+    /// the program's life, as dropping the returned reference will cause a memory leak.
+    ///
+    /// It does not reallocate or shrink the `PathBuf`, so the leaked allocation may include
+    /// unused capacity that is not part of the returned slice. If you want to discard excess
+    /// capacity, call [`into_boxed_path`], and then [`Box::leak`] instead.
+    /// However, keep in mind that trimming the capacity may result in a reallocation and copy.
+    ///
+    /// [`into_boxed_path`]: Self::into_boxed_path
+    #[inline]
+    pub fn leak<'a>(self) -> &'a mut Path<Flavor> {
+        convert_mut(self.inner.leak())
+    }
 }
 
 // Public per-flavor wrappers.
@@ -466,24 +484,6 @@ impl AnyPathBuf {
     #[inline]
     pub fn clear(&mut self) {
         self.inner.clear();
-    }
-
-    /// Consumes and leaks the `AnyPathBuf`, returning a mutable reference to the contents,
-    /// `&'a mut AnyPath`.
-    ///
-    /// The caller has free choice over the returned lifetime, including 'static.
-    /// Indeed, this function is ideally used for data that lives for the remainder of
-    /// the program's life, as dropping the returned reference will cause a memory leak.
-    ///
-    /// It does not reallocate or shrink the `PathBuf`, so the leaked allocation may include
-    /// unused capacity that is not part of the returned slice. If you want to discard excess
-    /// capacity, call [`into_boxed_path`], and then [`Box::leak`] instead.
-    /// However, keep in mind that trimming the capacity may result in a reallocation and copy.
-    ///
-    /// [`into_boxed_path`]: Self::into_boxed_path
-    #[inline]
-    pub fn leak<'a>(self) -> &'a mut AnyPath {
-        convert_mut(self.inner.leak())
     }
 
     /// Consumes a [`AnyPathBuf`], returning an `Ok` [`AbsPathBuf`] if the [`AnyPathBuf`]
