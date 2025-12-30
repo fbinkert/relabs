@@ -170,6 +170,15 @@ where
         self.inner.set_file_name(file_name.as_ref().as_os_str())
     }
 
+    pub fn try_set_file_name<S: AsRef<std::path::Path>>(
+        &mut self,
+        file_name: S,
+    ) -> Result<(), PathFlavorError> {
+        let rel = RelPath::try_new(file_name.as_ref())?;
+        self.set_file_name(rel);
+        Ok(())
+    }
+
     /// Updates [`self.extension`] to `Some(extension)` or to `None` if
     /// `extension` is empty.
     ///
