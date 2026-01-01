@@ -13,41 +13,57 @@ use std::{
 };
 
 use crate::{
-    AnyPath,
     errors::PathFlavorError,
     flavors::{Absolute, Any, PathFlavor, Relative, StdPush},
     internal::{self, convert_mut},
     path::{Path, RelPath},
 };
 
-/// Newtype wrapper around `std::path::PathBuf`.
+/// A type-safe, flavored wrapper around [`std::path::PathBuf`].
+///
+/// `PathBuf` uses the generic `Flavor` parameter to enforce invariants (like being
+/// absolute or relative) at the type level. Most users should use the type aliases:
+/// [`AbsPathBuf`], [`RelPathBuf`], or [`AnyPathBuf`].
+///
+/// All flavored types are `#[repr(transparent)]` and incur zero runtime overhead
+/// compared to the standard library.
 #[repr(transparent)]
 pub struct PathBuf<Flavor = Any> {
     _flavor: PhantomData<Flavor>,
     inner: std::path::PathBuf,
 }
 
-/// Owned, typed, absolute path ('PathBuf<Absolute>').
+/// An owned, guaranteed **absolute** path.
 ///
-/// Invariant: 'Path::is_absolute()' must be true.
+/// # Invariant
+/// On Unix, this path must start with `/`. On Windows, it must start with a prefix
+/// (e.g., `C:\`) or a UNC path.
 pub type AbsPathBuf = PathBuf<Absolute>;
 
-/// Owned, typed, relative path ('PathBuf<Relative>').
+/// An owned, guaranteed **relative** path.
 ///
-/// Invariant: 'Path::is_relative()' must be true.
+/// # Invariant
+/// This path must not start with a root or prefix. An empty path is considered relative.
+///
+/// This type is useful for configuration sub-paths, asset locations, or any path
+/// intended to be joined onto a base directory.
 pub type RelPathBuf = PathBuf<Relative>;
 
-/// Owned, unconstrained path ('PathBuf<Any>').
+/// An owned path with **no compile-time constraints**.
 ///
-/// Invariant: No invariant.
+/// This is a direct analog to [`std::path::PathBuf`] and acts as the "untyped"
+/// version of the flavored paths.
 pub type AnyPathBuf = PathBuf<Any>;
 
 impl<Flavor> PathBuf<Flavor>
 where
     Flavor: PathFlavor,
 {
-    /// Create a new [`PathBuf<Flavor>`] from a `std::path::PathBuf` without validating the invariant.
-    /// Caller must ensure `invariant` holds.
+    /// Creates a new flavored path without validation.
+    ///
+    /// # Safety
+    /// The caller must ensure that the `path` satisfies the requirements of the `Flavor`.
+    /// In `debug` builds, this is checked via `debug_assert!`.
     pub(crate) fn new_trusted(path: std::path::PathBuf) -> Self {
         debug_assert!(Flavor::accepts(&path));
         Self {
@@ -56,7 +72,7 @@ where
         }
     }
 
-    /// Coerces to a [`Path<Flavor>`] slice.
+    /// Returns a reference to the flavored [`Path`] slice.
     ///
     /// # Examples
     ///
@@ -77,6 +93,7 @@ where
         internal::convert_ref(&self.inner)
     }
 
+    /// Consumes the flavored path and returns the underlying [`std::path::PathBuf`].
     #[must_use]
     #[inline]
     pub fn into_std(self) -> std::path::PathBuf {
@@ -88,12 +105,14 @@ where
         &mut self.inner
     }
 
-    /// Truncates `self` to [`self.parent`].
+    /// Shortens the path to its parent.
     ///
-    /// Returns `false` and does nothing if [`self.parent`] is [`None`].
-    /// Otherwise, returns `true`.
+    /// Returns `true` and terminates the path at its parent if a parent exists.
+    /// Returns `false` and does nothing if the path has no parent.
     ///
-    /// [`self.parent`]: Path::parent
+    /// # Flavored Behavior
+    /// - For [`AbsPathBuf`]: Returns `false` if the path is the root (e.g., `/`).
+    /// - For [`RelPathBuf`]: Returns `false` if the path is empty.
     ///
     /// # Examples
     ///
@@ -128,10 +147,11 @@ where
         self.inner.pop()
     }
 
-    /// Updates [`self.file_name`] to `file_name`.
+    /// Replaces the last component of the path with `file_name`.
     ///
-    /// This method is specialized for [`RelPathBuf`] and **requires** the input
-    /// `file_name` to be a valid relative path component (`Path<Relative>`).
+    /// This method requires a [`RelPath`] to ensure that the "flavor" of the path
+    /// (Absolute or Relative) is preserved. Passing an absolute path here is a
+    /// compile-time error.
     ///
     /// This strict typing guarantees that the path flavor invariant is **maintained**
     /// at compile time, eliminating the need for runtime checks.
@@ -167,9 +187,10 @@ where
     /// // buf.set_file_name(absolute_name); // <- Compile Error (Good!)
     /// ```
     pub fn set_file_name<S: AsRef<RelPath>>(&mut self, file_name: S) {
-        self.inner.set_file_name(file_name.as_ref().as_os_str())
+        self.inner.set_file_name(file_name.as_ref())
     }
 
+    /// Fallible version of [`set_file_name`].
     pub fn try_set_file_name<S: AsRef<std::path::Path>>(
         &mut self,
         file_name: S,
@@ -179,22 +200,12 @@ where
         Ok(())
     }
 
-    /// Updates [`self.extension`] to `Some(extension)` or to `None` if
-    /// `extension` is empty.
+    /// Updates the file extension.
     ///
-    /// Returns `false` and does nothing if [`self.file_name`] is [`None`],
-    /// returns `true` and updates the extension otherwise.
-    ///
-    /// If [`self.extension`] is [`None`], the extension is added; otherwise
-    /// it is replaced.
-    ///
-    /// If `extension` is the empty string, [`self.extension`] will be [`None`]
-    /// afterwards, not `Some("")`.
+    /// If the path has no file name, this does nothing and returns `false`.
     ///
     /// # Panics
-    ///
-    /// Panics if the passed extension contains a path separator (see
-    /// [`is_separator`]).
+    /// Panics if the new extension contains a path separator.
     ///
     /// # Caveats
     ///
@@ -360,8 +371,9 @@ where
         self.inner.shrink_to(min_capacity)
     }
 
-    // Flavor-changing: consumes self and reuses its buffer (can reuse capacity).
-    // Same as `set` but with changes flavor.
+    /// Reuses the existing allocation to hold a new path of a potentially different flavor.
+    ///
+    /// This is more efficient than creating a new `PathBuf` as it avoids a reallocation.
     #[inline]
     pub fn replace_with<T, P>(self, path: P) -> PathBuf<T>
     where
@@ -393,33 +405,34 @@ where
         Ok(())
     }
 
-    /// Appends a relative path segment to this buffer.
+    /// Appends a relative path to `self`.
+    ///
+    /// # The Safety Guarantee
+    /// In `std::path::PathBuf`, pushing an absolute path *replaces* the base path.
+    /// In `RelAbs`, `push` only accepts [`RelPath`], guaranteeing that this operation
+    /// **always appends** and never destroys the existing prefix.
+    ///
+    /// To allow `std`-style replacement, use [`push_std`](Self::push_std)
     #[inline]
     pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
         self.inner.push(rhs.as_ref().as_std());
         debug_assert!(Flavor::accepts(&self.inner));
     }
 
-    /// Untyped fallible version of [`push`].
+    /// A fallible version of [`push`](Self::push) that accepts unvalidated input.
+    ///
+    /// # Errors
+    /// Returns [`PathFlavorError`] if `rhs` is an absolute path.
     #[inline]
     pub fn try_push<P: AsRef<std::path::Path>>(&mut self, rhs: P) -> Result<(), PathFlavorError> {
         self.push(RelPath::try_new(&rhs)?);
         Ok(())
     }
 
-    /// Consumes and leaks the `PathBuf<Flavor>`, returning a mutable reference to the contents,
-    /// `&'a mut Path<Flavor>`.
+    /// Moves the path out of the buffer and "leaks" it, returning a mutable reference.
     ///
-    /// The caller has free choice over the returned lifetime, including 'static.
-    /// Indeed, this function is ideally used for data that lives for the remainder of
-    /// the program's life, as dropping the returned reference will cause a memory leak.
-    ///
-    /// It does not reallocate or shrink the `PathBuf`, so the leaked allocation may include
-    /// unused capacity that is not part of the returned slice. If you want to discard excess
-    /// capacity, call [`into_boxed_path`], and then [`Box::leak`] instead.
-    /// However, keep in mind that trimming the capacity may result in a reallocation and copy.
-    ///
-    /// [`into_boxed_path`]: Self::into_boxed_path
+    /// This is useful for transferring ownership to a global or long-lived reference
+    /// without the overhead of `Arc` or `Mutex`.
     #[inline]
     pub fn leak<'a>(self) -> &'a mut Path<Flavor> {
         convert_mut(self.inner.leak())
@@ -464,7 +477,10 @@ impl AnyPathBuf {
         Self::new_trusted(std::path::PathBuf::with_capacity(capacity))
     }
 
-    /// Yields a mutable reference to the underlying [`OsString`] instance.
+    /// Returns a mutable reference to the underlying [`OsString`].
+    ///
+    /// This is only available on `AnyPathBuf` because modifying the string directly
+    /// could break the invariants of `AbsPathBuf` or `RelPathBuf`.
     ///
     /// # Examples
     ///
@@ -564,6 +580,11 @@ impl PathBuf<Absolute> {}
 
 impl<Flavor: StdPush> PathBuf<Flavor> {
     #[inline]
+    /// Appends `rhs` to `self` using standard library semantics.
+    ///
+    /// Unlike [`push`](Self::push), if `rhs` is an absolute path, it will
+    /// **replace** the current path. The `Flavor` invariant is checked after
+    /// the operation.
     pub fn push_std<P: AsRef<std::path::Path>>(&mut self, rhs: P) {
         self.inner.push(rhs.as_ref());
         debug_assert!(Flavor::accepts(&self.inner));
@@ -623,10 +644,9 @@ where
     Flavor: PathFlavor,
     P: AsRef<RelPath>,
 {
-    /// Extends `self` with trusted [`RelPath`] elements from `iter`.
+    /// Extends the path with trusted relative segments.
     ///
-    /// This implementation requires inputs to be strictly typed as `AsRef<RelPath>`,
-    /// ensuring at compile time that only valid relative paths are appended.
+    /// This is a compile-time safe version of extension.
     ///
     /// To extend using untrusted types (like `&str`), use [`try_extend`](Self::try_extend) instead.
     ///
@@ -651,18 +671,14 @@ where
 }
 
 impl<Flavor: PathFlavor> PathBuf<Flavor> {
-    /// Extends `self` with path elements from `iter`, verifying at runtime that they are relative.
-    ///
-    /// Unlike [`Extend::extend`], this method accepts untrusted standard types (like `&str`,
-    /// `String`, or `std::path::Path`) and validates that each component is a relative path.
+    /// Extends `self` with components from an iterator, validating each at runtime.
     ///
     /// # Errors
+    /// Returns [`PathFlavorError`] if any component in the iterator is absolute.
     ///
-    /// Returns a [`PathFlavorError`](crate::errors::PathFlavorError) if any element in `iter` is an absolute path.
-    ///
-    /// If an error occurs, the function returns immediately. **Note:** The buffer `self`
-    /// will remain modified with any components that were successfully pushed *before*
-    /// the error occurred.
+    /// # Note on Atomicity
+    /// This operation is **not atomic**. If an error occurs, `self` will still
+    /// contain the components successfully pushed before the error.
     ///
     /// # Examples
     ///
@@ -996,6 +1012,7 @@ where
     L: PathFlavor,
     R: PathFlavor,
 {
+    /// Checks if two paths are equal, regardless of their type-level flavors.
     fn eq(&self, other: &PathBuf<R>) -> bool {
         self.inner == other.inner
     }
