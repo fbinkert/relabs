@@ -874,8 +874,8 @@ impl<Flavor: StdJoin> Path<Flavor> {
     /// ```
     /// use relabs::{Path, PathBuf};
     ///
-    /// assert_eq!(Path::new("/etc").join("passwd"), PathBuf::from("/etc/passwd"));
-    /// assert_eq!(Path::new("/etc").join("/bin/sh"), PathBuf::from("/bin/sh"));
+    /// assert_eq!(Path::new("/etc").join_std("passwd"), PathBuf::from("/etc/passwd"));
+    /// assert_eq!(Path::new("/etc").join_std("/bin/sh"), PathBuf::from("/bin/sh"));
     /// ```
     #[must_use]
     #[inline]
