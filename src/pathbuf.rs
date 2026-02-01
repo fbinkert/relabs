@@ -442,7 +442,7 @@ where
 // Public per-flavor wrappers.
 
 impl AnyPathBuf {
-    /// Allocates an empty [`PathBuf<Falvor = Any>`].
+    /// Allocates an empty [`PathBuf<Flavor = Any>`].
     ///
     /// # Examples
     ///
@@ -527,7 +527,7 @@ impl AnyPathBuf {
     }
 
     /// Consumes a [`AnyPathBuf`], returning an `Ok` [`RelPathBuf`] if the [`AnyPathBuf`]
-    /// is absolute. Otherwise, returns the original [`AnyPathBuf`] as an `Err`.
+    /// is relative. Otherwise, returns the original [`AnyPathBuf`] as an `Err`.
     ///
     /// # Examples
     ///
