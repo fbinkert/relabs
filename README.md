@@ -3,6 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/relabs.svg)](https://crates.io/crates/relabs)
 [![Docs.rs](https://docs.rs/relabs/badge.svg)](https://docs.rs/relabs)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
+[![Build Status](https://github.com/fbinkert/relabs/workflows/CI/badge.svg)](https://github.com/fbinkert/relabs/actions)
 
 **Strict, compile-time validation for absolute and relative paths in Rust.**
 
