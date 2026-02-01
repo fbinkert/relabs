@@ -2,11 +2,18 @@
 name = "relabs"
 version = "0.1.0"
 edition = "2024"
-description = "Type-safe relative/absolute path wrappers."
+rust-version = "1.93.0"
 license = "MIT"
+description = "Type-safe relative/absolute path wrappers."
+documentatoin = "https://docs.rs/relabs/latest/relabs/"
+readme = "README.md"
 keywords = ["paths", "filesystem", "validation", "type-sysyem"]
 categories = ["rust-patterns", "filesystem", "os"]
 repository = "https://github.com/fbinkert/relabs"
 authors = ["Fabian Binkert <fabian.binkert@gmail.com>"]
+exclude = [".github"]
+
+
 
 [dependencies]
+# none :)
