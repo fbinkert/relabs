@@ -1,15 +1,7 @@
 use std::{
-    borrow::{Borrow, Cow},
     collections::TryReserveError,
-    convert::Infallible,
     ffi::{OsStr, OsString},
-    fmt,
-    hash::{Hash, Hasher},
     marker::PhantomData,
-    ops::{Deref, DerefMut},
-    rc::Rc,
-    str::FromStr,
-    sync::Arc,
 };
 
 use crate::{
@@ -29,8 +21,8 @@ use crate::{
 /// compared to the standard library.
 #[repr(transparent)]
 pub struct PathBuf<Flavor = Any> {
-    _flavor: PhantomData<Flavor>,
-    inner: std::path::PathBuf,
+    pub(crate) _flavor: PhantomData<Flavor>,
+    pub(crate) inner: std::path::PathBuf,
 }
 
 /// An owned, guaranteed **absolute** path.
@@ -382,7 +374,7 @@ where
     {
         let mut inner = self.into_std();
         inner.clear();
-        inner.push(path.as_ref().as_std());
+        inner.push(path.as_ref().as_std_path());
         debug_assert!(T::accepts(&inner));
         PathBuf::<T>::new_trusted(inner)
     }
@@ -392,7 +384,7 @@ where
     // Use `replace_with` to change flavor.
     #[inline]
     pub fn set<P: AsRef<Path<Flavor>>>(&mut self, new: P) {
-        let p = new.as_ref().as_std();
+        let p = new.as_ref().as_std_path();
         self.inner.clear();
         self.inner.push(p);
         debug_assert!(Flavor::accepts(&self.inner));
@@ -415,7 +407,7 @@ where
     /// To allow `std`-style replacement, use [`push_std`](Self::push_std)
     #[inline]
     pub fn push<P: AsRef<RelPath>>(&mut self, rhs: P) {
-        self.inner.push(rhs.as_ref().as_std());
+        self.inner.push(rhs.as_ref().as_std_path());
         debug_assert!(Flavor::accepts(&self.inner));
     }
 
@@ -436,6 +428,52 @@ where
     #[inline]
     pub fn leak<'a>(self) -> &'a mut Path<Flavor> {
         convert_mut(self.inner.leak())
+    }
+
+    /// Extends `self` with components from an iterator, validating each at runtime.
+    ///
+    /// # Errors
+    /// Returns [`PathFlavorError`] if any component in the iterator is absolute.
+    ///
+    /// # Note on Atomicity
+    /// This operation is **not atomic**. If an error occurs, `self` will still
+    /// contain the components successfully pushed before the error.
+    ///
+    /// # Examples
+    ///
+    /// Successful extension using strings:
+    ///
+    /// ```
+    /// use relabs::{AbsPathBuf, PathBuf};
+    ///
+    /// let mut abs_path = AbsPathBuf::try_from("/tmp").unwrap();
+    ///
+    /// // Safe to use raw strings here because they are checked at runtime
+    /// abs_path.try_extend(["foo", "bar", "file.txt"]).unwrap();
+    ///
+    /// assert_eq!(abs_path, PathBuf::from("/tmp/foo/bar/file.txt"));
+    /// ```
+    ///
+    /// Fails if an absolute path is encountered:
+    ///
+    /// ```
+    /// use relabs::AbsPathBuf;
+    ///
+    /// let mut abs_path = AbsPathBuf::try_from("/tmp").unwrap();
+    ///
+    /// // The component "/bar" is absolute, so this returns an error
+    /// assert!(abs_path.try_extend(["foo", "/bar"]).is_err());
+    /// ```
+    pub fn try_extend<I, P>(&mut self, iter: I) -> Result<(), crate::errors::PathFlavorError>
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<std::path::Path>,
+    {
+        for p in iter {
+            let rel_segment = RelPath::try_new(p.as_ref())?;
+            self.inner.push(rel_segment.as_std_path());
+        }
+        Ok(())
     }
 }
 
@@ -591,481 +629,6 @@ impl<Flavor: StdPush> PathBuf<Flavor> {
     }
 }
 
-//////////////////////////////////////////////////////////////
-// Trait implementations
-//////////////////////////////////////////////////////////////
-
-impl Default for AnyPathBuf {
-    fn default() -> Self {
-        Self {
-            _flavor: PhantomData,
-            inner: std::path::PathBuf::default(),
-        }
-    }
-}
-
-impl<Flavor: PathFlavor> Deref for PathBuf<Flavor> {
-    type Target = Path<Flavor>;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.as_path()
-    }
-}
-
-impl<Flavor: PathFlavor> DerefMut for PathBuf<Flavor> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Path<Flavor> {
-        internal::convert_mut(&mut self.inner)
-    }
-}
-
-impl<Flavor: PathFlavor> Clone for PathBuf<Flavor> {
-    #[inline]
-    fn clone(&self) -> Self {
-        Self {
-            _flavor: PhantomData,
-            inner: self.inner.clone(),
-        }
-    }
-
-    /// Clones the contents of `source` into `self`.
-    ///
-    /// This method is preferred over simply assigning `source.clone()` to `self`,
-    /// as it avoids reallocation if possible.
-    #[inline]
-    fn clone_from(&mut self, source: &Self) {
-        self.inner.clone_from(&source.inner)
-    }
-}
-
-impl<P, Flavor> Extend<P> for PathBuf<Flavor>
-where
-    Flavor: PathFlavor,
-    P: AsRef<RelPath>,
-{
-    /// Extends the path with trusted relative segments.
-    ///
-    /// This is a compile-time safe version of extension.
-    ///
-    /// To extend using untrusted types (like `&str`), use [`try_extend`](Self::try_extend) instead.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use relabs::{AbsPathBuf, PathBuf, RelPath};
-    ///
-    /// let mut abs_path = AbsPathBuf::try_from("/tmp").unwrap();
-    ///
-    /// // Inputs must be strictly typed relative paths
-    /// let components = ["foo", "bar", "file.txt"]
-    ///     .map(|s| RelPath::try_new(s).unwrap());
-    ///
-    /// abs_path.extend(components);
-    ///
-    /// assert_eq!(abs_path, PathBuf::from("/tmp/foo/bar/file.txt"));
-    /// ```
-    fn extend<T: IntoIterator<Item = P>>(&mut self, iter: T) {
-        iter.into_iter().for_each(move |p| self.push(p.as_ref()));
-    }
-}
-
-impl<Flavor: PathFlavor> PathBuf<Flavor> {
-    /// Extends `self` with components from an iterator, validating each at runtime.
-    ///
-    /// # Errors
-    /// Returns [`PathFlavorError`] if any component in the iterator is absolute.
-    ///
-    /// # Note on Atomicity
-    /// This operation is **not atomic**. If an error occurs, `self` will still
-    /// contain the components successfully pushed before the error.
-    ///
-    /// # Examples
-    ///
-    /// Successful extension using strings:
-    ///
-    /// ```
-    /// use relabs::{AbsPathBuf, PathBuf};
-    ///
-    /// let mut abs_path = AbsPathBuf::try_from("/tmp").unwrap();
-    ///
-    /// // Safe to use raw strings here because they are checked at runtime
-    /// abs_path.try_extend(["foo", "bar", "file.txt"]).unwrap();
-    ///
-    /// assert_eq!(abs_path, PathBuf::from("/tmp/foo/bar/file.txt"));
-    /// ```
-    ///
-    /// Fails if an absolute path is encountered:
-    ///
-    /// ```
-    /// use relabs::AbsPathBuf;
-    ///
-    /// let mut abs_path = AbsPathBuf::try_from("/tmp").unwrap();
-    ///
-    /// // The component "/bar" is absolute, so this returns an error
-    /// assert!(abs_path.try_extend(["foo", "/bar"]).is_err());
-    /// ```
-    pub fn try_extend<I, P>(&mut self, iter: I) -> Result<(), crate::errors::PathFlavorError>
-    where
-        I: IntoIterator<Item = P>,
-        P: AsRef<std::path::Path>,
-    {
-        for p in iter {
-            let rel_segment = RelPath::try_new(p.as_ref())?;
-            self.inner.push(rel_segment.as_std());
-        }
-        Ok(())
-    }
-}
-
-impl<Flavor: PathFlavor> Borrow<Path<Flavor>> for PathBuf<Flavor> {
-    #[inline]
-    fn borrow(&self) -> &Path<Flavor> {
-        self.deref()
-    }
-}
-
-impl<Flavor: PathFlavor> Hash for PathBuf<Flavor> {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        self.inner.hash(h)
-    }
-}
-
-impl FromStr for AnyPathBuf {
-    type Err = Infallible;
-
-    #[inline]
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(s.into())
-    }
-}
-
-impl FromStr for AbsPathBuf {
-    type Err = std::path::PathBuf;
-
-    #[inline]
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.try_into()
-    }
-}
-
-impl FromStr for RelPathBuf {
-    type Err = std::path::PathBuf;
-
-    #[inline]
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.try_into()
-    }
-}
-
-//////////////////////////////////////////////////////////////
-// Conversions
-//////////////////////////////////////////////////////////////
-
-impl<'a, Flavor: PathFlavor> From<&'a PathBuf<Flavor>> for Cow<'a, Path<Flavor>> {
-    /// Creates a clone-on-write pointer from a reference to
-    /// [`PathBuf<Flavor>`].
-    ///
-    /// This conversion does not clone or allocate.
-    #[inline]
-    fn from(p: &'a PathBuf<Flavor>) -> Cow<'a, Path<Flavor>> {
-        Cow::Borrowed(p.as_path())
-    }
-}
-
-impl<T: ?Sized + AsRef<RelPath>> From<&T> for RelPathBuf {
-    #[inline]
-    fn from(s: &T) -> Self {
-        Self::new_trusted(s.as_ref().into())
-    }
-}
-
-impl<T: ?Sized + AsRef<AbsPathBuf>> From<&T> for AbsPathBuf {
-    #[inline]
-    fn from(s: &T) -> Self {
-        Self::new_trusted(s.as_ref().into())
-    }
-}
-
-impl<T: ?Sized + AsRef<OsStr>> From<&T> for AnyPathBuf {
-    #[inline]
-    fn from(s: &T) -> Self {
-        Self::new_trusted(s.as_ref().into())
-    }
-}
-
-impl<Flavor: PathFlavor> From<Box<Path<Flavor>>> for PathBuf<Flavor> {
-    /// Converts `Box<Path<Flavor>>` into a [`PathBuf<Flavor>`].
-    ///
-    /// This conversion does not allocate or copy memory.
-    #[inline]
-    fn from(boxed: Box<Path<Flavor>>) -> Self {
-        boxed.into_path_buf()
-    }
-}
-
-impl<'a, Flavor: PathFlavor> From<Cow<'a, Path<Flavor>>> for PathBuf<Flavor> {
-    /// Converts a clone-on-write pointer to an owned path.
-    ///
-    /// Converting from a `Cow::Owned` does not clone or allocate.
-    #[inline]
-    fn from(p: Cow<'a, Path<Flavor>>) -> Self {
-        p.into_owned()
-    }
-}
-
-impl<Flavor: PathFlavor> From<OsString> for PathBuf<Flavor> {
-    /// Converts an [`OsString`] into a [`PathBuf`].
-    ///
-    /// This conversion does not allocate or copy memory.
-    #[inline]
-    fn from(s: OsString) -> Self {
-        Self {
-            _flavor: PhantomData,
-            inner: s.into(),
-        }
-    }
-}
-
-impl<Flavor: PathFlavor> From<PathBuf<Flavor>> for Arc<Path<Flavor>> {
-    /// Converts a [`PathBuf<Flavor>`] into an [`Arc`]`<`[`Path<Flavor>`]`>` by moving the
-    /// [`PathBuf<Flavor>`] data into a new [`Arc`] buffer.
-    #[inline]
-    fn from(s: PathBuf<Flavor>) -> Arc<Path<Flavor>> {
-        Arc::from(s.into_boxed_path())
-    }
-}
-
-impl<Flavor: PathFlavor> From<PathBuf<Flavor>> for Box<Path<Flavor>> {
-    /// Converts a [`PathBuf<Flavor>`] into a [`Box`]`<`[`Path<Flavor>`]`>`.
-    ///
-    /// This conversion currently should not allocate memory,
-    /// but this behavior is not guaranteed on all platforms or in all future versions.
-    #[inline]
-    fn from(p: PathBuf<Flavor>) -> Box<Path<Flavor>> {
-        p.into_boxed_path()
-    }
-}
-
-impl<'a, Flavor: PathFlavor> From<PathBuf<Flavor>> for Cow<'a, Path<Flavor>> {
-    /// Creates a clone-on-write pointer from an owned
-    /// instance of [`PathBuf<Flavor>`].
-    ///
-    /// This conversion does not clone or allocate.
-    #[inline]
-    fn from(s: PathBuf<Flavor>) -> Cow<'a, Path<Flavor>> {
-        Cow::Owned(s)
-    }
-}
-
-impl<Flavor: PathFlavor> From<PathBuf<Flavor>> for OsString {
-    /// Converts a [`PathBuf<Flavor>`] into an [`OsString`]
-    ///
-    /// This conversion does not allocate or copy memory.
-    #[inline]
-    fn from(path_buf: PathBuf<Flavor>) -> OsString {
-        path_buf.inner.into_os_string()
-    }
-}
-
-impl<Flavor: PathFlavor> From<PathBuf<Flavor>> for Rc<Path<Flavor>> {
-    /// Converts a [`PathBuf<Flavor>`] into an [`Rc`]`<`[`Path<Flavor>`]`>` by moving the
-    /// [`PathBuf<Flavor>`] data into a new [`Rc`] buffer.
-    #[inline]
-    fn from(s: PathBuf<Flavor>) -> Rc<Path<Flavor>> {
-        Rc::from(s.into_boxed_path())
-    }
-}
-
-impl<Flavor> TryFrom<std::path::PathBuf> for PathBuf<Flavor>
-where
-    Flavor: PathFlavor,
-{
-    type Error = std::path::PathBuf;
-
-    fn try_from(path: std::path::PathBuf) -> Result<Self, Self::Error> {
-        if Flavor::accepts(&path) {
-            Ok(Self::new_trusted(path))
-        } else {
-            Err(path)
-        }
-    }
-}
-
-impl TryFrom<&std::path::Path> for AbsPathBuf {
-    type Error = std::path::PathBuf;
-
-    fn try_from(path: &std::path::Path) -> Result<Self, Self::Error> {
-        Self::try_from(path.to_path_buf())
-    }
-}
-
-impl TryFrom<&std::path::Path> for RelPathBuf {
-    type Error = std::path::PathBuf;
-
-    fn try_from(path: &std::path::Path) -> Result<Self, Self::Error> {
-        Self::try_from(path.to_path_buf())
-    }
-}
-
-impl TryFrom<&str> for AbsPathBuf {
-    type Error = std::path::PathBuf;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let path = std::path::Path::new(s);
-        if Absolute::accepts(path) {
-            Ok(Self::new_trusted(path.to_path_buf()))
-        } else {
-            Err(path.to_path_buf())
-        }
-    }
-}
-
-impl TryFrom<String> for AbsPathBuf {
-    type Error = std::path::PathBuf;
-
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        let inner = std::path::PathBuf::from(s);
-        if <Absolute as PathFlavor>::accepts(&inner) {
-            Ok(Self::new_trusted(inner))
-        } else {
-            Err(inner)
-        }
-    }
-}
-
-impl TryFrom<&str> for RelPathBuf {
-    type Error = std::path::PathBuf;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let path = std::path::Path::new(s);
-        if <Relative as PathFlavor>::accepts(path) {
-            Ok(Self::new_trusted(path.to_path_buf()))
-        } else {
-            Err(path.to_path_buf())
-        }
-    }
-}
-
-impl TryFrom<String> for RelPathBuf {
-    type Error = std::path::PathBuf;
-
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        let inner = std::path::PathBuf::from(s);
-        if <Relative as PathFlavor>::accepts(&inner) {
-            Ok(Self::new_trusted(inner))
-        } else {
-            Err(inner)
-        }
-    }
-}
-
-impl TryFrom<AnyPathBuf> for RelPathBuf {
-    type Error = AnyPathBuf;
-    fn try_from(path: AnyPathBuf) -> Result<Self, Self::Error> {
-        RelPathBuf::try_from(path.inner).map_err(AnyPathBuf::new_trusted)
-    }
-}
-
-impl TryFrom<AnyPathBuf> for AbsPathBuf {
-    type Error = AnyPathBuf;
-    fn try_from(path: AnyPathBuf) -> Result<Self, Self::Error> {
-        AbsPathBuf::try_from(path.inner).map_err(AnyPathBuf::new_trusted)
-    }
-}
-
-impl From<String> for AnyPathBuf {
-    fn from(value: String) -> Self {
-        Self::new_trusted(std::path::PathBuf::from(value))
-    }
-}
-
-impl<Flavor> AsRef<OsStr> for PathBuf<Flavor> {
-    #[inline]
-    fn as_ref(&self) -> &OsStr {
-        self.inner.as_os_str()
-    }
-}
-
-impl<Flavor> AsRef<std::path::Path> for PathBuf<Flavor> {
-    #[inline]
-    fn as_ref(&self) -> &std::path::Path {
-        &self.inner
-    }
-}
-
-impl<Flavor> fmt::Debug for PathBuf<Flavor>
-where
-    Flavor: PathFlavor,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.inner.fmt(f)
-    }
-}
-
-//////////////////////////////////////////////////////////////
-// Comparisons
-//////////////////////////////////////////////////////////////
-
-impl<L, R> PartialEq<PathBuf<R>> for PathBuf<L>
-where
-    L: PathFlavor,
-    R: PathFlavor,
-{
-    /// Checks if two paths are equal, regardless of their type-level flavors.
-    fn eq(&self, other: &PathBuf<R>) -> bool {
-        self.inner == other.inner
-    }
-}
-
-impl<Flavor: PathFlavor> Eq for PathBuf<Flavor> {}
-
-impl<L, R> PartialEq<Path<R>> for PathBuf<L>
-where
-    L: PathFlavor,
-    R: PathFlavor,
-{
-    fn eq(&self, other: &Path<R>) -> bool {
-        self.inner.as_path() == other.as_std()
-    }
-}
-
-impl<L, R> PartialEq<&Path<R>> for PathBuf<L>
-where
-    L: PathFlavor,
-    R: PathFlavor,
-{
-    fn eq(&self, other: &&Path<R>) -> bool {
-        self.inner.as_path() == other.as_std()
-    }
-}
-
-macro_rules! impl_eq_utf8 {
-    ($($Type:ty),+) => {
-        $(
-            impl<Flavor: PathFlavor> PartialEq<$Type> for PathBuf<Flavor> {
-                #[inline]
-                fn eq(&self, other: &$Type) -> bool {
-                    self.inner.as_path() == std::path::Path::new(other)
-                }
-            }
-
-            impl<Flavor: PathFlavor> PartialEq<PathBuf<Flavor>> for $Type {
-                #[inline]
-                fn eq(&self, other: &PathBuf<Flavor>) -> bool {
-                    std::path::Path::new(self) == other.inner.as_path()
-                }
-            }
-        )+
-    };
-}
-
-impl_eq_utf8! {
-    str,
-    &str,
-    String
-}
-
 impl<P> FromIterator<P> for RelPathBuf
 where
     P: AsRef<RelPath>,
@@ -1093,9 +656,8 @@ where
     /// ```
     fn from_iter<T: IntoIterator<Item = P>>(iter: T) -> Self {
         let mut inner = std::path::PathBuf::new();
-        // Since we only accept RelPath, we know 'inner' will never become Absolute.
         iter.into_iter()
-            .for_each(|p| inner.push(p.as_ref().as_std()));
+            .for_each(|p| inner.push(p.as_ref().as_std_path()));
         Self::new_trusted(inner)
     }
 }

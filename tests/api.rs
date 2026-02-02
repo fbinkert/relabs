@@ -59,7 +59,7 @@ fn test_relpath_push_strictness() {
     p.push(part);
 
     let expected = if cfg!(windows) { r"a\b" } else { "a/b" };
-    assert_eq!(p.as_std(), Path::new(expected));
+    assert_eq!(p.as_std_path(), Path::new(expected));
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn test_abspath_push_std_replacement() {
     let new_root = get_root_str();
     p.push_std(new_root); // Should replace the whole path with root
 
-    assert_eq!(p.as_std(), Path::new(new_root));
+    assert_eq!(p.as_std_path(), Path::new(new_root));
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn test_anypath_push_std() {
     let abs = get_absolute_str();
     p.push_std(abs);
 
-    assert_eq!(p.as_std(), Path::new(abs));
+    assert_eq!(p.as_std_path(), Path::new(abs));
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn test_try_extend_validation() {
 
     assert!(res.is_err());
     // Verify state did not change
-    assert_eq!(p.as_std(), Path::new("a"));
+    assert_eq!(p.as_std_path(), Path::new("a"));
 }
 
 // Pop Behavior (Invariant Protection)
@@ -108,7 +108,7 @@ fn test_absolute_pop_safety() {
 
     // Should return false and NOT empty the string
     assert!(!p.pop());
-    assert_eq!(p.as_std(), Path::new(root));
+    assert_eq!(p.as_std_path(), Path::new(root));
 
     // Ensure strictly typed wrapper didn't become empty
     assert_eq!(p.into_std().as_os_str().len(), root.len());
@@ -119,7 +119,7 @@ fn test_relative_pop_safety() {
     let mut p = RelPathBuf::try_from("a").unwrap();
 
     assert!(p.pop()); // Becomes empty
-    assert_eq!(p.as_std(), Path::new(""));
+    assert_eq!(p.as_std_path(), Path::new(""));
 
     // Pop on empty
     assert!(!p.pop());
@@ -143,7 +143,7 @@ fn test_replace_with_capacity_reuse() {
 
     // The allocation should be preserved
     assert_eq!(cap_before, cap_after);
-    assert_eq!(p_rel.as_std(), rel_inputs.as_std());
+    assert_eq!(p_rel.as_std_path(), rel_inputs.as_std_path());
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn test_set_file_name_typed() {
     } else {
         "dir/new.md"
     };
-    assert_eq!(p.as_std(), Path::new(expected));
+    assert_eq!(p.as_std_path(), Path::new(expected));
 }
 
 // This test ensures the `RelPath` trait bound prevents compiling logic that

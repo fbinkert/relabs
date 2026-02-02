@@ -6,7 +6,7 @@ use std::{
     fs, io,
     iter::FusedIterator,
     marker::PhantomData,
-    path::{self, Components, StripPrefixError},
+    path::{Components, StripPrefixError},
 };
 
 use crate::{
@@ -20,8 +20,8 @@ use crate::{
 /// Newtype wrapper around `std::path::Path`.
 #[repr(transparent)]
 pub struct Path<Flavor = Any> {
-    _flavor: PhantomData<Flavor>,
-    inner: std::path::Path,
+    pub(crate) _flavor: PhantomData<Flavor>,
+    pub(crate) inner: std::path::Path,
 }
 
 /// Borrowed, typed, absolute path ('Path<Absolute>').
@@ -68,7 +68,7 @@ where
     }
 
     #[inline]
-    pub fn as_std(&self) -> &std::path::Path {
+    pub fn as_std_path(&self) -> &std::path::Path {
         &self.inner
     }
 
@@ -853,7 +853,7 @@ where
     ///
     /// The result remains invariant.
     pub fn join<P: AsRef<RelPath>>(&self, path: P) -> PathBuf<Flavor> {
-        let joined_std = self.inner.join(path.as_ref().as_std());
+        let joined_std = self.inner.join(path.as_ref().as_std_path());
         debug_assert!(Flavor::accepts(&joined_std));
         PathBuf::<Flavor>::new_trusted(joined_std)
     }
@@ -1019,15 +1019,6 @@ impl Path<Absolute> {
 
 impl Path<Relative> {}
 
-impl<Flavor> fmt::Debug for Path<Flavor>
-where
-    Flavor: PathFlavor,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.as_std().fmt(f)
-    }
-}
-
 /// An iterator over [`Path`] and its ancestors.
 ///
 /// This `struct` is created by the [`ancestors`] method on [`Path`].
@@ -1063,125 +1054,3 @@ impl<'a, Flavor: PathFlavor + 'a> Iterator for Ancestors<'a, Flavor> {
 }
 
 impl<'a, Flavor: PathFlavor + 'a> FusedIterator for Ancestors<'a, Flavor> {}
-
-impl<Flavor: PathFlavor> ToOwned for Path<Flavor> {
-    type Owned = PathBuf<Flavor>;
-
-    #[inline]
-    fn to_owned(&self) -> Self::Owned {
-        self.to_path_buf()
-    }
-
-    #[inline]
-    fn clone_into(&self, target: &mut PathBuf<Flavor>) {
-        self.inner.clone_into(target.unsafe_inner_mut())
-    }
-}
-
-// Standard traits
-
-impl<Flavor: PathFlavor> PartialOrd for Path<Flavor> {
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<Flavor: PathFlavor> Ord for Path<Flavor> {
-    #[inline]
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.inner.cmp(&other.inner)
-    }
-}
-
-impl<Flavor: PathFlavor> std::hash::Hash for Path<Flavor> {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.inner.hash(state)
-    }
-}
-
-// Comparison
-
-impl<Flavor: PathFlavor> PartialEq for Path<Flavor> {
-    fn eq(&self, other: &Self) -> bool {
-        self.inner == other.inner
-    }
-}
-
-impl<Flavor: PathFlavor> Eq for Path<Flavor> {}
-
-impl<L, R> PartialEq<PathBuf<R>> for Path<L>
-where
-    L: PathFlavor,
-    R: PathFlavor,
-{
-    fn eq(&self, other: &PathBuf<R>) -> bool {
-        self.as_std() == other.as_std()
-    }
-}
-
-impl<Flavor: PathFlavor> PartialEq<PathBuf<Flavor>> for &Path<Flavor> {
-    fn eq(&self, other: &PathBuf<Flavor>) -> bool {
-        *self == other.as_path()
-    }
-}
-
-// Cross-type comparison
-impl<Flavor: PathFlavor> PartialEq<std::path::PathBuf> for Path<Flavor> {
-    #[inline]
-    fn eq(&self, other: &std::path::PathBuf) -> bool {
-        &self.inner == other.as_path()
-    }
-}
-
-impl<Flavor: PathFlavor> PartialEq<Path<Flavor>> for std::path::PathBuf {
-    #[inline]
-    fn eq(&self, other: &Path<Flavor>) -> bool {
-        self.as_path() == &other.inner
-    }
-}
-
-impl<Flavor: PathFlavor> PartialEq<std::path::Path> for Path<Flavor> {
-    #[inline]
-    fn eq(&self, other: &std::path::Path) -> bool {
-        &self.inner == other
-    }
-}
-
-impl<Flavor: PathFlavor> PartialEq<Path<Flavor>> for std::path::Path {
-    #[inline]
-    fn eq(&self, other: &Path<Flavor>) -> bool {
-        self == &other.inner
-    }
-}
-
-macro_rules! impl_cmp {
-    ($($Type:ty),+) => {
-        $(
-            impl<Flavor: PathFlavor> PartialEq<$Type> for Path<Flavor> {
-                #[inline]
-                fn eq(&self, other: &$Type) -> bool {
-                    &self.inner == std::path::Path::new(other)
-                }
-            }
-
-            impl<Flavor: PathFlavor> PartialEq<Path<Flavor>> for $Type {
-                #[inline]
-                fn eq(&self, other: &Path<Flavor>) -> bool {
-                    std::path::Path::new(self) == &other.inner
-                }
-            }
-        )+
-    };
-}
-
-impl_cmp!(
-    str,
-    &str,
-    String,
-    OsStr,
-    &OsStr,
-    std::ffi::OsString,
-    Cow<'_, OsStr>
-);
