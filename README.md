@@ -70,14 +70,16 @@ Validation happens only once at the boundary (construction). Host OS rules apply
 ```rust
 use relabs::{AbsPathBuf, RelPathBuf};
 
-// Success
+// Using TryFrom
 let root = AbsPathBuf::try_from("/usr/local").unwrap();
 
-// Error: Cannot create AbsPath from a relative string
-let err = AbsPathBuf::try_from("local/bin").unwrap_err();
+// Using Parse (FromStr)
+let config: RelPathBuf = "config/app.toml".parse().unwrap();
+let logs: AbsPathBuf = "/var/log".parse().unwrap();
 
-// Error: Cannot create RelPath from an absolute string
-let err = RelPathBuf::try_from("/etc/hosts").unwrap_err();
+// Error Handling:
+// Cannot create RelPath from an absolute string
+assert!(RelPathBuf::try_from("/etc/hosts").is_err());
 ```
 
 ### Self-Documenting Signatures
@@ -116,34 +118,34 @@ path.push_std("/new/root");
 
 ### Comparison
 
-| Feature            |       **RelAbs**       | `std::path`  |   `camino`   |   `relative-path`    |    `abs_path`     |
+| Feature | **RelAbs** | `std::path` | `camino` | `relative-path` | `abs_path` |
 | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Scope**    | **Unified (Abs & Rel)** |     Unified (dynamic)     |     Unified (UTF-8)     |  Relative Only   | Absolute Only |
-| **Encoding**  |     **OS-native**      |  OS-native   |  UTF-8 only  |        UTF-8         |     OS-native     |
-| **Safety**      |     **Compile-time**      |  Runtime checks   | Runtime checks   | Compile-time |     Compile-time     |
-| **Integration** |        **Zero-cost Wrapper**         | N/A | Wrapper |         Virtual Tyype          |        Wrapper         |
+| **Scope** | **Unified (Abs & Rel)** | Unified (dynamic) | Unified (UTF-8) | Relative Only | Absolute Only |
+| **Encoding** | **OS-native** | OS-native | UTF-8 only | UTF-8 | OS-native |
+| **Safety** | **Compile-time** | Runtime checks | Runtime checks | Compile-time | Compile-time |
+| **Integration** | **Zero-cost Wrapper** | N/A | Wrapper | Virtual Type | Wrapper |
 
-Why `RelAbs?`
+**Why `RelAbs?`**
 
-- vs. `std::path`: `RelaAbs` enforces path direction (absolute vs. relative) in the type system, preventing logic errors where a path is assumed to be one or the other.
-- **vs. `camino`:** `RelAbs` focuses on **absolute/relative validation**, whereas `camino` focuses on **UTF-8 encoding**. `RelAbs` wraps `std::path` and supports non-UTF-8 OS paths.
-- **vs. `relative-path`/`abs_path`:** These crates solve half the problem each. `RelAbs` provides a unified system where you can safely join a `RelPath` onto an `AbsPath` to get a new `AbsPath`.
+* **vs. `std::path`**: `RelAbs` enforces path direction (absolute vs. relative) in the type system, preventing logic errors where a path is assumed to be one or the other.
+* **vs. `camino`**: `RelAbs` focuses on **absolute/relative validation**, whereas `camino` focuses on **UTF-8 encoding**. `RelAbs` wraps `std::path` and supports non-UTF-8 OS paths.
+* **vs. `relative-path`/`abs_path`**: These crates solve half the problem each. `RelAbs` provides a unified system where you can safely join a `RelPath` onto an `AbsPath` to get a new `AbsPath`.
 
 ## Safety & Internals
 
 `RelAbs` relies on unsafe only for the zero-cost conversion methods (e.g., `&Path` to `&AbsPath`). This is sound because:
 
-- All types are `#[repr(transparent)]`.
-- Constructors strictly validate invariants before casting.
-- Mutation methods (like push) enforce invariants to prevent the underlying buffer from becoming invalid.
+* All types are `#[repr(transparent)]`.
+* Constructors strictly validate invariants before casting.
+* Mutation methods (like push) enforce invariants to prevent the underlying buffer from becoming invalid.
 
 ## Roadmap
 
-- [ ] `Serde` support (Deserialize/Serialize with validation).
-- [ ] Complete `std::path::Path` API parity (metadata, ancestors, etc.).
-- [ ] Test with Miri.
-- [ ] Display and Debug implementations that respect flavors.
-- [ ] Windows/Unix specific extensions.
+* [ ] `Serde` support (Deserialize/Serialize with validation).
+* [ ] Complete `std::path::Path` API parity (metadata, ancestors, etc.).
+* [ ] Test with Miri.
+* [ ] Display and Debug implementations that respect flavors.
+* [ ] Windows/Unix specific extensions.
 
 ## License
 
