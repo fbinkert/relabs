@@ -153,10 +153,7 @@ fn test_transparent_representation() {
     assert_eq!(mem::size_of::<AbsPathBuf>(), mem::size_of::<StdPathBuf>());
     assert_eq!(mem::align_of::<AbsPathBuf>(), mem::align_of::<StdPathBuf>());
 
-    assert_eq!(
-        mem::size_of::<&relabs::path::AbsPath>(),
-        mem::size_of::<&Path>()
-    );
+    assert_eq!(mem::size_of::<&relabs::AbsPath>(), mem::size_of::<&Path>());
 }
 
 // Flavor Conversions
