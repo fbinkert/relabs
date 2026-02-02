@@ -841,7 +841,11 @@ where
     /// allocating.
     #[must_use]
     pub fn into_path_buf(self: Box<Self>) -> PathBuf<Flavor> {
-        todo!()
+        // SAAFETY:
+        // Path<Flavor> is #[repr(transparent)] wrapper around std::path::Path.
+        let raw = Box::into_raw(self) as *mut std::path::Path;
+        let boxed_std = unsafe { Box::from_raw(raw) };
+        PathBuf::new_trusted(boxed_std.into_path_buf())
     }
 
     /// Joins a relative path onto this path.
