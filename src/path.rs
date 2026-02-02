@@ -5,10 +5,11 @@ use std::{
     fs, io,
     iter::FusedIterator,
     marker::PhantomData,
-    path::{Components, StripPrefixError},
+    path::{self, Components, StripPrefixError},
 };
 
 use crate::{
+    AbsPathBuf,
     errors::PathFlavorError,
     flavors::{Absolute, Any, PathFlavor, Relative, StdJoin},
     internal,
@@ -654,8 +655,10 @@ where
     /// assert_eq!(path.canonicalize().unwrap(), PathBuf::from("/foo/test/bar.rs"));
     /// ```
     #[inline]
-    pub fn canonicalize(&self) -> io::Result<PathBuf> {
-        todo!()
+    pub fn canonicalize(&self) -> io::Result<AbsPathBuf> {
+        let path = self.inner.canonicalize()?;
+        // SAFETY: std::fs::canonicalize guarantees an absolute path on success
+        Ok(PathBuf::<Absolute>::new_trusted(path))
     }
 
     /// Returns an iterator over the entries within a directory.
