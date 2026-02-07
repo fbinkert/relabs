@@ -1,8 +1,6 @@
 use std::{
     borrow::Cow,
-    cmp::Ordering,
     ffi::OsStr,
-    fmt::{self},
     fs, io,
     iter::FusedIterator,
     marker::PhantomData,
@@ -24,17 +22,17 @@ pub struct Path<Flavor = Any> {
     pub(crate) inner: std::path::Path,
 }
 
-/// Borrowed, typed, absolute path ('Path<Absolute>').
+/// Borrowed, typed, absolute path ([`Path<Absolute>`]).
 ///
-/// Invariant: 'Path::is_absolute()' must be true.
+/// Invariant: [`Path::is_absolute()`] must be true.
 pub type AbsPath = Path<Absolute>;
 
-/// Borrowed, typed, relative path ('Path<Relative>').
+/// Borrowed, typed, relative path ([`Path<Relative>`]).
 ///
-/// Invariant: 'Path::is_relative()' must be true.
+/// Invariant: [`Path::is_relative()`] must be true.
 pub type RelPath = Path<Relative>;
 
-/// Borrowed, unconstrained path ('Path<Any>').
+/// Borrowed, unconstrained path ([`Path<Any>`]).
 ///
 /// Invariant: No invariant
 pub type AnyPath = Path<Any>;
@@ -59,6 +57,10 @@ where
     /// assert!(AbsPath::try_new("foo.txt").is_err());
     /// assert!(RelPath::try_new("foo.txt").is_ok());
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if flavor invariant does not hold.
     #[inline]
     pub fn try_new<P: AsRef<std::path::Path> + ?Sized>(path: &P) -> Result<&Self, PathFlavorError> {
         let path = path.as_ref();
@@ -67,8 +69,9 @@ where
             .ok_or_else(|| PathFlavorError::WrongFlavor(path.to_path_buf()))
     }
 
+    #[must_use]
     #[inline]
-    pub fn as_std_path(&self) -> &std::path::Path {
+    pub const fn as_std_path(&self) -> &std::path::Path {
         &self.inner
     }
 
@@ -155,10 +158,10 @@ where
     /// the current directory.
     ///
     /// * On Unix, a path is absolute if it starts with the root, so
-    /// `is_absolute` and [`has_root`] are equivalent.
+    ///   `is_absolute` and [`has_root`] are equivalent.
     ///
     /// * On Windows, a path is absolute if it has a prefix and starts with the
-    /// root: `c:\windows` is absolute, while `c:temp` and `\temp` are not.
+    ///   root: `c:\windows` is absolute, while `c:temp` and `\temp` are not.
     ///
     /// # Examples
     ///
@@ -246,8 +249,8 @@ where
     /// ```
     #[must_use]
     #[inline]
-    pub fn parent(&self) -> Option<&Path<Flavor>> {
-        self.inner.parent().map(Path::new_trusted)
+    pub fn parent(&self) -> Option<&Self> {
+        self.inner.parent().map(Self::new_trusted)
     }
 
     /// Produces an iterator over `Path` and its ancestors.
@@ -619,6 +622,13 @@ where
     /// let metadata = path.metadata().expect("metadata call failed");
     /// println!("{:?}", metadata.file_type());
     /// ```
+    /// # Errors
+    ///
+    /// This function will return an error in the following situations, but is not
+    /// limited to just these cases:
+    ///
+    ///* The user lacks permissions to perform `metadata` call on `path`.
+    ///* `path` does not exist.
     #[inline]
     pub fn metadata(&self) -> io::Result<fs::Metadata> {
         self.inner.metadata()
@@ -637,6 +647,13 @@ where
     /// let metadata = path.symlink_metadata().expect("symlink_metadata call failed");
     /// println!("{:?}", metadata.file_type());
     /// ```
+    /// # Errors
+    ///
+    /// This function will return an error in the following situations, but is not
+    /// limited to just these cases:
+    ///
+    /// * The user lacks permissions to perform `metadata` call on `path`.
+    /// * `path` does not exist.
     #[inline]
     pub fn symlink_metadata(&self) -> io::Result<fs::Metadata> {
         self.inner.symlink_metadata()
@@ -655,6 +672,14 @@ where
     /// let path = Path::new("/foo/test/../test/bar.rs");
     /// assert_eq!(path.canonicalize().unwrap(), PathBuf::from("/foo/test/bar.rs"));
     /// ```
+    /// # Errors
+    ///
+    /// This function will return an error in the following situations, but is not
+    /// limited to just these cases:
+    ///
+    /// * `path` does not exist.
+    /// * A non-final component in path is not a directory.
+    ///
     #[inline]
     pub fn canonicalize(&self) -> io::Result<AbsPathBuf> {
         let path = self.inner.canonicalize()?;
@@ -681,6 +706,15 @@ where
     ///     }
     /// }
     /// ```
+    /// # Errors
+    ///
+    /// This function will return an error in the following situations, but is not
+    /// limited to just these cases:
+    ///
+    /// * The provided `path` doesn't exist.
+    /// * The process lacks permissions to view the contents.
+    /// * The `path` points at a non-directory file.
+    ///
     #[inline]
     pub fn read_dir(&self) -> io::Result<fs::ReadDir> {
         self.inner.read_dir()
@@ -742,6 +776,16 @@ where
     /// ```
     ///
     /// [`exists()`]: Self::exists
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error in the following situations, but is not
+    /// limited to just these cases:
+    ///
+    /// * permissiond enied,
+    /// * connection refused,
+    /// * connection reset,
+    /// * host unreachable,
     #[inline]
     pub fn try_exists(&self) -> io::Result<bool> {
         self.inner.try_exists()
@@ -862,6 +906,10 @@ where
     ///
     /// This is the fallible counterpart to [`join`]. It first validates that
     /// `path` is a relative path, and then joins it. The flavor remains invariant.
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if the provided path is not a relative path.
     pub fn try_join<P: AsRef<std::path::Path>>(
         &self,
         path: P,
@@ -872,6 +920,7 @@ where
     /// Zero-cost cast to an `AnyPath`.
     ///
     /// This is safe because `Any` imposes no invariants.
+    #[must_use]
     #[inline]
     pub fn as_any(&self) -> &AnyPath {
         Path::new_trusted(&self.inner)
@@ -880,6 +929,10 @@ where
     /// Tries to convert this path to an `AbsPath` reference.
     ///
     /// Returns `Ok(&AbsPath)` if the path satisfies the `Absolute` invariant.
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if `self` does not satisfy the `Absolute` invariant.
     #[inline]
     pub fn try_absolute(&self) -> Result<&AbsPath, PathFlavorError> {
         AbsPath::try_new(self)
@@ -888,6 +941,10 @@ where
     /// Tries to convert this path to a `RelPath` reference.
     ///
     /// Returns `Ok(&RelPath)` if the path satisfies the `Relative` invariant.
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if `self` does not satisfy the `Relative` invariant.
     #[inline]
     pub fn try_relative(&self) -> Result<&RelPath, PathFlavorError> {
         RelPath::try_new(self)
@@ -896,12 +953,16 @@ where
     /// Attempts to cast this path to a path of a different flavor `Target`.
     ///
     /// This validates the `Target` invariant at runtime.
+    /// # Errors
+    ///
+    /// Will return `Err` if `self` does not satisfy the target `Flavor` invariant.
     #[inline]
     pub fn cast<Target: PathFlavor>(&self) -> Result<&Path<Target>, PathFlavorError> {
         Path::<Target>::try_new(self)
     }
 
     /// creates an owned `std::path::PathBuf` from this path.
+    #[must_use]
     #[inline]
     pub fn to_std_path_buf(&self) -> std::path::PathBuf {
         self.inner.to_path_buf()
@@ -989,9 +1050,9 @@ impl<Flavor: PathFlavor> AsRef<std::path::Path> for Path<Flavor> {
     }
 }
 
-impl<Flavor: PathFlavor> AsRef<Path<Flavor>> for Path<Flavor> {
+impl<Flavor: PathFlavor> AsRef<Self> for Path<Flavor> {
     #[inline]
-    fn as_ref(&self) -> &Path<Flavor> {
+    fn as_ref(&self) -> &Self {
         self
     }
 }
@@ -1011,6 +1072,13 @@ impl Path<Absolute> {
     /// let path = AbsPath::try_new("/laputa/sky_castle.rs").unwrap();
     /// let path_link = path.read_link().expect("read_link call failed");
     /// ```
+    /// # Errors
+    ///
+    /// This function will return an error in the following situations, but is not
+    /// limited to just these cases:
+    ///
+    /// * `path` is not a symbolic link.
+    /// * `path` does not exist.
     #[inline]
     pub fn read_link(&self) -> io::Result<PathBuf<Any>> {
         self.inner.read_link().map(PathBuf::new_trusted)

@@ -9,9 +9,9 @@ pub trait PathFlavor: private::Sealed {
     fn accepts<P: AsRef<Path> + ?Sized>(path: &P) -> bool;
 }
 
-/// Invariant: 'Path::is_absolute()' must be true.
+/// Invariant: `Path::is_absolute()` must be true.
 pub struct Absolute;
-/// Invariant: 'Path::is_relative()' must be true.
+/// Invariant: `Path::is_relative()` must be true.
 pub struct Relative;
 /// No invariants.
 pub struct Any;

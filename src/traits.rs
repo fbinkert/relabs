@@ -64,7 +64,7 @@ impl<Flavor: PathFlavor> Clone for PathBuf<Flavor> {
     /// as it avoids reallocation if possible.
     #[inline]
     fn clone_from(&mut self, source: &Self) {
-        self.inner.clone_from(&source.inner)
+        self.inner.clone_from(&source.inner);
     }
 }
 
@@ -102,20 +102,20 @@ where
 impl<Flavor: PathFlavor> Borrow<Path<Flavor>> for PathBuf<Flavor> {
     #[inline]
     fn borrow(&self) -> &Path<Flavor> {
-        self.deref()
+        self.as_path()
     }
 }
 
 impl<Flavor: PathFlavor> Hash for PathBuf<Flavor> {
     fn hash<H: Hasher>(&self, h: &mut H) {
-        self.inner.hash(h)
+        self.inner.hash(h);
     }
 }
 
 impl<Flavor: PathFlavor> std::hash::Hash for Path<Flavor> {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.inner.hash(state)
+        self.inner.hash(state);
     }
 }
 
@@ -188,7 +188,7 @@ impl<'a, Flavor: PathFlavor> From<&'a PathBuf<Flavor>> for Cow<'a, Path<Flavor>>
     ///
     /// This conversion does not clone or allocate.
     #[inline]
-    fn from(p: &'a PathBuf<Flavor>) -> Cow<'a, Path<Flavor>> {
+    fn from(p: &'a PathBuf<Flavor>) -> Self {
         Cow::Borrowed(p.as_path())
     }
 }
@@ -200,7 +200,7 @@ impl<T: ?Sized + AsRef<RelPath>> From<&T> for RelPathBuf {
     }
 }
 
-impl<T: ?Sized + AsRef<AbsPathBuf>> From<&T> for AbsPathBuf {
+impl<T: ?Sized + AsRef<Self>> From<&T> for AbsPathBuf {
     #[inline]
     fn from(s: &T) -> Self {
         Self::new_trusted(s.as_ref().into())
@@ -232,7 +232,7 @@ impl<Flavor: PathFlavor> From<PathBuf<Flavor>> for OsString {
     ///
     /// This conversion does not allocate or copy memory.
     #[inline]
-    fn from(path_buf: PathBuf<Flavor>) -> OsString {
+    fn from(path_buf: PathBuf<Flavor>) -> Self {
         path_buf.inner.into_os_string()
     }
 }
@@ -323,14 +323,14 @@ impl TryFrom<String> for RelPathBuf {
 impl TryFrom<AnyPathBuf> for RelPathBuf {
     type Error = AnyPathBuf;
     fn try_from(path: AnyPathBuf) -> Result<Self, Self::Error> {
-        RelPathBuf::try_from(path.inner).map_err(AnyPathBuf::new_trusted)
+        Self::try_from(path.inner).map_err(AnyPathBuf::new_trusted)
     }
 }
 
 impl TryFrom<AnyPathBuf> for AbsPathBuf {
     type Error = AnyPathBuf;
     fn try_from(path: AnyPathBuf) -> Result<Self, Self::Error> {
-        AbsPathBuf::try_from(path.inner).map_err(AnyPathBuf::new_trusted)
+        Self::try_from(path.inner).map_err(AnyPathBuf::new_trusted)
     }
 }
 
@@ -421,9 +421,7 @@ macro_rules! impl_smart_ptrs {
         impl From<PathBuf<$Flavor>> for Arc<Path<$Flavor>> {
             #[inline]
             fn from(p: PathBuf<$Flavor>) -> Self {
-                let arc_std: Arc<std::path::Path> = p.inner.into();
-                let raw = Arc::into_raw(arc_std) as *const Path<$Flavor>;
-                unsafe { Arc::from_raw(raw) }
+                Arc::from(p.into_boxed_path())
             }
         }
 
@@ -431,9 +429,7 @@ macro_rules! impl_smart_ptrs {
         impl From<&Path<$Flavor>> for Arc<Path<$Flavor>> {
             #[inline]
             fn from(p: &Path<$Flavor>) -> Self {
-                let arc_std: Arc<std::path::Path> = p.inner.into();
-                let raw = Arc::into_raw(arc_std) as *const Path<$Flavor>;
-                unsafe { Arc::from_raw(raw) }
+                Arc::from(p.to_path_buf().into_boxed_path())
             }
         }
 
@@ -441,9 +437,7 @@ macro_rules! impl_smart_ptrs {
         impl From<PathBuf<$Flavor>> for Rc<Path<$Flavor>> {
             #[inline]
             fn from(p: PathBuf<$Flavor>) -> Self {
-                let rc_std: Rc<std::path::Path> = p.inner.into();
-                let raw = Rc::into_raw(rc_std) as *const Path<$Flavor>;
-                unsafe { Rc::from_raw(raw) }
+                Rc::from(p.into_boxed_path())
             }
         }
 
@@ -451,9 +445,7 @@ macro_rules! impl_smart_ptrs {
         impl From<&Path<$Flavor>> for Rc<Path<$Flavor>> {
             #[inline]
             fn from(p: &Path<$Flavor>) -> Self {
-                let rc_std: Rc<std::path::Path> = p.inner.into();
-                let raw = Rc::into_raw(rc_std) as *const Path<$Flavor>;
-                unsafe { Rc::from_raw(raw) }
+                Rc::from(p.to_path_buf().into_boxed_path())
             }
         }
     };
@@ -639,7 +631,7 @@ impl<Flavor: PathFlavor> ToOwned for Path<Flavor> {
 
     #[inline]
     fn clone_into(&self, target: &mut PathBuf<Flavor>) {
-        self.inner.clone_into(target.unsafe_inner_mut())
+        self.inner.clone_into(target.unsafe_inner_mut());
     }
 }
 

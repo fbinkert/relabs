@@ -81,6 +81,7 @@ where
     /// assert_eq!(Path::new("/test"), any_path.as_path());
     /// ```
     #[inline]
+    #[must_use]
     pub fn as_path(&self) -> &Path<Flavor> {
         internal::convert_ref(&self.inner)
     }
@@ -93,7 +94,7 @@ where
     }
 
     #[inline]
-    pub(crate) fn unsafe_inner_mut(&mut self) -> &mut std::path::PathBuf {
+    pub(crate) const fn unsafe_inner_mut(&mut self) -> &mut std::path::PathBuf {
         &mut self.inner
     }
 
@@ -179,10 +180,14 @@ where
     /// // buf.set_file_name(absolute_name); // <- Compile Error (Good!)
     /// ```
     pub fn set_file_name<S: AsRef<RelPath>>(&mut self, file_name: S) {
-        self.inner.set_file_name(file_name.as_ref())
+        self.inner.set_file_name(file_name.as_ref());
     }
 
     /// Fallible version of [`set_file_name`].
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if file name does not satisfy the `Relative` invariant.
     pub fn try_set_file_name<S: AsRef<std::path::Path>>(
         &mut self,
         file_name: S,
@@ -320,12 +325,17 @@ where
     /// [`reserve`]: OsString::reserve
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
-        self.inner.reserve(additional)
+        self.inner.reserve(additional);
     }
 
     /// Invokes [`try_reserve`] on the underlying instance of [`OsString`].
     ///
     /// [`try_reserve`]: OsString::try_reserve
+    ///
+    /// # Errors
+    ///
+    /// If the capacity overflows, or the allocator reports a failure, then an error
+    /// is returned.
     #[inline]
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
         self.inner.try_reserve(additional)
@@ -336,12 +346,17 @@ where
     /// [`reserve_exact`]: OsString::reserve_exact
     #[inline]
     pub fn reserve_exact(&mut self, additional: usize) {
-        self.inner.reserve_exact(additional)
+        self.inner.reserve_exact(additional);
     }
 
     /// Invokes [`try_reserve_exact`] on the underlying instance of [`OsString`].
     ///
     /// [`try_reserve_exact`]: OsString::try_reserve_exact
+    ///
+    /// # Errors
+    ///
+    /// If the capacity overflows, or the allocator reports a failure, then an error
+    /// is returned.
     #[inline]
     pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
         self.inner.try_reserve_exact(additional)
@@ -352,7 +367,7 @@ where
     /// [`shrink_to_fit`]: OsString::shrink_to_fit
     #[inline]
     pub fn shrink_to_fit(&mut self) {
-        self.inner.shrink_to_fit()
+        self.inner.shrink_to_fit();
     }
 
     /// Invokes [`shrink_to`] on the underlying instance of [`OsString`].
@@ -360,7 +375,7 @@ where
     /// [`shrink_to`]: OsString::shrink_to
     #[inline]
     pub fn shrink_to(&mut self, min_capacity: usize) {
-        self.inner.shrink_to(min_capacity)
+        self.inner.shrink_to(min_capacity);
     }
 
     /// Reuses the existing allocation to hold a new path of a potentially different flavor.
@@ -391,6 +406,10 @@ where
     }
 
     /// Untyped fallible version of [`set`].
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if flavor invariant does not hold for `new`.
     #[inline]
     pub fn try_set<P: AsRef<std::path::Path>>(&mut self, new: P) -> Result<(), PathFlavorError> {
         self.set(Path::<Flavor>::try_new(&new)?);
@@ -425,6 +444,7 @@ where
     ///
     /// This is useful for transferring ownership to a global or long-lived reference
     /// without the overhead of `Arc` or `Mutex`.
+    #[must_use]
     #[inline]
     pub fn leak<'a>(self) -> &'a mut Path<Flavor> {
         convert_mut(self.inner.leak())
@@ -489,6 +509,7 @@ impl AnyPathBuf {
     ///
     /// let path = AnyPathBuf::new();
     /// ```
+    #[must_use]
     #[inline]
     pub fn new() -> Self {
         Self::new_trusted(std::path::PathBuf::new())
@@ -510,8 +531,9 @@ impl AnyPathBuf {
     ///
     /// assert_eq!(capacity, any_path.capacity());
     /// ```
+    #[must_use]
     #[inline]
-    pub fn with_capacity(capacity: usize) -> PathBuf {
+    pub fn with_capacity(capacity: usize) -> Self {
         Self::new_trusted(std::path::PathBuf::with_capacity(capacity))
     }
 
@@ -559,6 +581,9 @@ impl AnyPathBuf {
     ///
     /// assert!(AnyPathBuf::from("test.txt").try_into_absolute().is_err());
     /// ```
+    /// # Errors
+    ///
+    /// Will return `Err` if `self` does not satisfy the `Absolute` invariant.
     #[inline]
     pub fn try_into_absolute(self) -> Result<AbsPathBuf, Self> {
         AbsPathBuf::try_from(self)
@@ -574,6 +599,9 @@ impl AnyPathBuf {
     ///
     /// assert!(AnyPathBuf::from("test.txt").try_into_absolute().is_err());
     /// ```
+    /// # Errors
+    ///
+    /// Will return `Err` if `self` does not satisfy the `Relative` invariant.
     #[inline]
     pub fn try_into_relative(self) -> Result<RelPathBuf, Self> {
         RelPathBuf::try_from(self)
@@ -581,7 +609,7 @@ impl AnyPathBuf {
 
     #[must_use]
     #[inline]
-    pub fn as_std_mut(&mut self) -> &mut std::path::PathBuf {
+    pub const fn as_std_mut(&mut self) -> &mut std::path::PathBuf {
         &mut self.inner
     }
 }
@@ -596,6 +624,7 @@ impl PathBuf<Relative> {
     ///
     /// let path = RelPathBuf::new();
     /// ```
+    #[must_use]
     #[inline]
     pub fn new() -> Self {
         let new = Self::new_trusted(std::path::PathBuf::new());
