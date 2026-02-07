@@ -8,9 +8,6 @@
 
 `RelAbs` enforces path invariants in the type system. It prevents directory traversal bugs and logic errors by ensuring you never accidentally join an absolute path onto a relative base.
 
-> ⚠️ **Status: Active Development**
-> This crate is currently in the early stages of development. APIs are subject to change.
-
 ## Motivation
 
 Standard Rust paths (`std::path::PathBuf`) are semantically dynamic: push behaves differently depending on whether the input is absolute or relative.
@@ -57,7 +54,7 @@ cargo add relabs
 
 `RelAbs` provides three path flavors. All are `#[repr(transparent)]` wrappers around `std::path::Path/PathBuf` with zero runtime overhead.
 
-| Types| Guarantee |
+| Type| Guarantee |
 | --- | --- |
 | `AbsPath`, `AbsPathBuf` | Path is absolute (starts with `/` or `C:\`). |
 | `RelPath`, `RelPathBuf` | Path is relative (no root prefix). |
