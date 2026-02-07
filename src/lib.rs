@@ -11,5 +11,5 @@ pub(crate) mod internal;
 
 pub use errors::PathFlavorError;
 pub use flavors::{Absolute, Any, PathFlavor, Relative};
-pub use path::{AbsPath, AnyPath, Path, RelPath};
+pub use path::{AbsPath, Ancestors, AnyPath, Path, RelPath};
 pub use pathbuf::{AbsPathBuf, AnyPathBuf, PathBuf, RelPathBuf};

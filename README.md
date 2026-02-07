@@ -6,61 +6,33 @@
 [![Build Status](https://github.com/fbinkert/relabs/workflows/CI/badge.svg)](https://github.com/fbinkert/relabs/actions)
 [![Downloads](https://img.shields.io/crates/d/relabs.svg)](https://crates.io/crates/relabs)
 
-`RelAbs` enforces path invariants in the type system. It prevents directory traversal bugs and logic errors by ensuring you never accidentally join an absolute path onto a relative base.
+`RelAbs` is a zero-cost extension of the `std::path` module that adds new **Absolute** and **Relative** path types. It enforces path invariants in the type system, preventing directory traversal bugs and logic errors by exposing stronger semantic guarantees for operations like joining, pushing, and serialization.
 
-## Motivation
+## What is `RelAbs`?
 
-Standard Rust paths (`std::path::PathBuf`) are semantically dynamic: push behaves differently depending on whether the input is absolute or relative.
+`RelAbs` provides `AbsPath`/`AbsPathBuf` and `RelPath`/`RelPathBuf`. These types are like the standard library's `Path` and `PathBuf`, except their "flavor" (absolute or relative) is guaranteed by the type system.
 
-```rust
-use std::path::PathBuf;
+The standard `std::path` types are semantically dynamic. A single `PathBuf` can hold an absolute path at one moment and a relative one the next. This flexibility is useful for general-purpose tools, but it creates a specific class of "silent" bugs:
 
-fn build(user_input: PathBuf){
-  let mut path = PathBuf::from("/var/www");
-  // If this string is absolute, it replaces the base.
-  // If it is relative, it appends.
-  path.push(user_input);
-  }
-```
+- The Replacement Problem: `PathBuf::push` replaces the entire path if the input is absolute. A simple `base.push(user_input)` can accidentally redirect your logic from `/var/app/uploads` to `/etc/passwd` if the input isn't strictly validated.
+- API Ambiguity: Documentation often says "Note: `base` must be absolute," but the compiler can't help you enforce it. Errors often occur far away from where the invalid path was originally introduced.
+- Redundant Validation: Without typed paths, you often find yourself calling `.is_absolute()` repeatedly on the same variable just to be safe.
 
-While this flexibility is often useful, it prevents the compiler from verifying your intent. If you expect a path to always be relative or always be absolute, `std::path` cannot enforce this invariant for you.
+`RelAbs` allows you to validate your paths once at the system boundary (e.g., config loading or CLI parsing) and then manipulate them as strictly typed flavors from there on.
 
-`RelAbs` lifts these invariants into the type system. It distinguishes between **replacing** a path (via `replace_with` or `push_std`) and extending a path (via `push`), making your logic explicit and verified at compile time.
+## Zero-Cost Integration
 
-```rust
-use relabs::{AbsPathBuf, RelPath};
+`RelAbs` is designed to be a "boring" library. It is a thin, `#[repr(transparent)]` wrapper around `std::path`.
 
-let mut path = AbsPathBuf::try_from("/var/www").unwrap();
+- No Overhead: All validation is lexical. There are no syscalls and no extra memory allocations beyond what `std::path` requires.
 
-// Compile Error: `push` only accepts `RelPath`.
-// This prevents accidental replacement of the base path.
-// path.push("/etc/passwd"); 
+- Drop-in Compatibility: Every flavored path is a valid `std::path::Path`. `RelAbs` types implement `AsRef<Path>`, meaning they work seamlessly with any existing Rust API that accepts standard paths.
 
-// You must strictly push relative paths:
-path.push(RelPath::try_new("static/style.css").unwrap());
-```
+- Safety: `RelAbs` relies on unsafe only for the zero-cost pointer casts between standard paths and flavored paths (e.g., `&Path` to `&AbsPath`), which is sound due to the transparent representation.
 
-## Installation
+## Examples
 
-Run the following Cargo command in your project directory:
-
-```bash
-cargo add relabs
-```
-
-## Usage
-
-### Zero-Cost Flavors
-
-`RelAbs` provides three path flavors. All are `#[repr(transparent)]` wrappers around `std::path::Path/PathBuf` with zero runtime overhead.
-
-| Type| Guarantee |
-| --- | --- |
-| `AbsPath`, `AbsPathBuf` | Path is absolute (starts with `/` or `C:\`). |
-| `RelPath`, `RelPathBuf` | Path is relative (no root prefix). |
-| `AnyPath`, `AnyPathBuf` | No guarantee ( alias for `std::path::Path`). |
-
-### Construction
+### Construction & Validation
 
 Validation happens only once at the boundary (construction). Host OS rules apply.
 
@@ -79,6 +51,36 @@ let logs: AbsPathBuf = "/var/log".parse().unwrap();
 assert!(RelPathBuf::try_from("/etc/hosts").is_err());
 ```
 
+## Type-Safe Composition
+
+You can only `join` or `push` a relative path onto an absolute base. This is enforced at compile time.
+
+```rust
+use relabs::{AbsPathBuf, RelPathBuf};
+
+let mut path = "/root".parse::<AbsPathBuf>().unwrap();
+let rel = "workdir".parse::<RelPathBuf>().unwrap();
+
+// push a RelPath
+path.push(rel);
+
+// try push a relative string literal
+path.try_push("rel").unwrap();
+
+// Cannot push an absolute path.
+assert!(path.try_push("/abs").is_err());
+```
+
+If you really need the standard library behavior (where absolute paths replace the base), use the explicit escape hatch `push_std`:
+
+```rust
+use relabs::AbsPathBuf;
+let mut path = AbsPathBuf::try_from("/usr/local").unwrap();
+
+// Explicitly opt-in to replacement semantics
+path.push_std("/new/root");
+```
+
 ### Self-Documenting Signatures
 
 Stop writing documentation like "Note: `base` must be absolute." Let the type system enforce it.
@@ -92,27 +94,6 @@ fn deploy(destination: &AbsPath, assets: &RelPath) {
 }
 ```
 
-## Typed Composition
-
-You can only `join` or `push` a relative path onto a base.
-
-```mermaid
-graph TD
-    A[AbsPathBuf] -->|join RelPath| B[AbsPathBuf]
-    C[RelPathBuf] -->|join RelPath| D[RelPathBuf]
-    A -.->|join AbsPath| X[Compile Error]
-```
-
-If you really need the standard library behavior (where absolute paths replace the base), use the explicit escape hatch `push_std`:
-
-```rust
-use relabs::AbsPathBuf;
-let mut path = AbsPathBuf::try_from("/usr/local").unwrap();
-
-// Explicitly opt-in to replacement semantics
-path.push_std("/new/root");
-```
-
 ### Comparison
 
 | Feature | **RelAbs** | `std::path` | `camino` | `relative-path` | `abs_path` |
@@ -122,27 +103,18 @@ path.push_std("/new/root");
 | **Safety** | **Compile-time** | Runtime checks | Runtime checks | Compile-time | Compile-time |
 | **Integration** | **Zero-cost Wrapper** | N/A | Wrapper | Virtual Type | Wrapper |
 
-**Why `RelAbs?`**
+**Why `RelAbs`**
 
-* **vs. `std::path`**: `RelAbs` enforces path direction (absolute vs. relative) in the type system, preventing logic errors where a path is assumed to be one or the other.
-* **vs. `camino`**: `RelAbs` focuses on **absolute/relative validation**, whereas `camino` focuses on **UTF-8 encoding**. `RelAbs` wraps `std::path` and supports non-UTF-8 OS paths.
-* **vs. `relative-path`/`abs_path`**: These crates solve half the problem each. `RelAbs` provides a unified system where you can safely join a `RelPath` onto an `AbsPath` to get a new `AbsPath`.
-
-## Safety & Internals
-
-`RelAbs` relies on unsafe only for the zero-cost conversion methods (e.g., `&Path` to `&AbsPath`). This is sound because:
-
-* All types are `#[repr(transparent)]`.
-* Constructors strictly validate invariants before casting.
-* Mutation methods (like push) enforce invariants to prevent the underlying buffer from becoming invalid.
+- **vs. `std::path`**: `RelAbs` enforces path direction (absolute vs. relative) in the type system, preventing logic errors where a path is assumed to be one or the other.
+- **vs. `camino`**: `RelAbs` focuses on **absolute/relative validation**, whereas `camino` focuses on **UTF-8 encoding**. `RelAbs` wraps `std::path` and supports non-UTF-8 OS paths.
+- **vs. `relative-path`/`abs_path`**: These crates solve half the problem each. `RelAbs` provides a unified system where you can safely join a `RelPath` onto an `AbsPath` to get a new `AbsPath`.
 
 ## Roadmap
 
-* [ ] `Serde` support (Deserialize/Serialize with validation).
-* [ ] Complete `std::path::Path` API parity (metadata, ancestors, etc.).
-* [ ] Test with Miri.
-* [ ] Display and Debug implementations that respect flavors.
-* [ ] Windows/Unix specific extensions.
+- [ ] `Serde` support
+- [ ] Clap Integration
+- [ ] Test with Miri
+- [ ] Windows/Unix-specific extensions
 
 ## License
 

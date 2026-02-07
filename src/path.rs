@@ -15,7 +15,7 @@ use crate::{
     pathbuf::PathBuf,
 };
 
-/// Newtype wrapper around `std::path::Path`.
+/// A type-save, flavored wrapper around [`std::path::Path`].
 #[repr(transparent)]
 pub struct Path<Flavor = Any> {
     pub(crate) _flavor: PhantomData<Flavor>,
@@ -1029,35 +1029,6 @@ impl AnyPath {
         Self::new_trusted(path)
     }
 }
-
-impl AsRef<AnyPath> for str {
-    fn as_ref(&self) -> &AnyPath {
-        AnyPath::new(self)
-    }
-}
-
-impl<Flavor: PathFlavor> AsRef<OsStr> for Path<Flavor> {
-    #[inline]
-    fn as_ref(&self) -> &OsStr {
-        self.inner.as_os_str()
-    }
-}
-
-impl<Flavor: PathFlavor> AsRef<std::path::Path> for Path<Flavor> {
-    #[inline]
-    fn as_ref(&self) -> &std::path::Path {
-        &self.inner
-    }
-}
-
-impl<Flavor: PathFlavor> AsRef<Self> for Path<Flavor> {
-    #[inline]
-    fn as_ref(&self) -> &Self {
-        self
-    }
-}
-
-// Public per-flavor wrappers.
 
 impl Path<Absolute> {
     /// Reads a symbolic link, returning the file that the link points to.

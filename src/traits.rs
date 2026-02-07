@@ -17,7 +17,7 @@ use std::{
 };
 
 use crate::{
-    AbsPathBuf, Absolute, Any, AnyPathBuf, Path, PathBuf, PathFlavor, RelPath, RelPathBuf,
+    AbsPathBuf, Absolute, Any, AnyPath, AnyPathBuf, Path, PathBuf, PathFlavor, RelPath, RelPathBuf,
     Relative, internal,
 };
 
@@ -141,6 +141,13 @@ where
 // Conversions (AsRef, From, TryFrom)
 // ============================================================================
 
+impl<Flavor: PathFlavor> AsRef<Path<Flavor>> for PathBuf<Flavor> {
+    #[inline]
+    fn as_ref(&self) -> &Path<Flavor> {
+        self.as_path()
+    }
+}
+
 impl<Flavor> AsRef<OsStr> for PathBuf<Flavor> {
     #[inline]
     fn as_ref(&self) -> &OsStr {
@@ -152,6 +159,33 @@ impl<Flavor> AsRef<std::path::Path> for PathBuf<Flavor> {
     #[inline]
     fn as_ref(&self) -> &std::path::Path {
         &self.inner
+    }
+}
+
+impl<Flavor: PathFlavor> AsRef<OsStr> for Path<Flavor> {
+    #[inline]
+    fn as_ref(&self) -> &OsStr {
+        self.inner.as_os_str()
+    }
+}
+
+impl<Flavor: PathFlavor> AsRef<std::path::Path> for Path<Flavor> {
+    #[inline]
+    fn as_ref(&self) -> &std::path::Path {
+        &self.inner
+    }
+}
+
+impl<Flavor: PathFlavor> AsRef<Self> for Path<Flavor> {
+    #[inline]
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+impl AsRef<AnyPath> for str {
+    fn as_ref(&self) -> &AnyPath {
+        AnyPath::new(self)
     }
 }
 
