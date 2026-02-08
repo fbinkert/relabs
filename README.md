@@ -6,7 +6,9 @@
 [![Build Status](https://github.com/fbinkert/relabs/workflows/CI/badge.svg)](https://github.com/fbinkert/relabs/actions)
 [![Downloads](https://img.shields.io/crates/d/relabs.svg)](https://crates.io/crates/relabs)
 
-`RelAbs` is a zero-cost extension of the `std::path` module that adds new **Absolute** and **Relative** path types. It enforces path invariants in the type system, preventing directory traversal bugs and logic errors by exposing stronger semantic guarantees for operations like joining, pushing, and serialization.
+`RelAbs` is a zero-cost extension of the `std::path` module that adds new **Absolute** and **Relative** path types.
+
+It enforces path invariants in the type system, preventing directory traversal bugs and logic errors by exposing stronger semantic guarantees for operations like joining, pushing, and serialization.
 
 ## What is `RelAbs`?
 
